@@ -14,8 +14,7 @@
 <header class="topbar">
   <div class="brand">
     <img id="brandLogo" class="brand-logo" alt="Raahi app logo">
-    <span class="brand-name">RAA<span class="accent-text">HI</span> <span class="brand-now">NOW</span></span>
-    <span class="brand-domain">now.raahi.io</span>
+    <img id="brandWordmark" class="brand-wordmark" alt="Raahi NOW">
   </div>
   <div class="header-right">
     <span id="userArea"><button class="topbtn" id="loginBtn">Log in</button> <button class="topbtn accent-btn" id="signupBtn">Create account</button></span>
@@ -228,6 +227,7 @@
 <script>
   if (window.BRAND) {
     var bl = document.getElementById('brandLogo'); if (bl) bl.src = window.BRAND.logo;
+    var bw = document.getElementById('brandWordmark'); if (bw && window.BRAND.wordmark) bw.src = window.BRAND.wordmark;
     var li = document.getElementById('leoImg'); if (li) li.src = window.BRAND.leo;
     var fav = document.createElement('link'); fav.rel = 'icon'; fav.href = window.BRAND.logo; document.head.appendChild(fav);
   }
