@@ -28,6 +28,12 @@ const API_ROUTES = {
   '/api/logout': 'logout',
   '/api/me': 'me',
   '/api/wallet-address': 'wallet-address',
+  '/api/offers': 'offers',
+  '/api/buddies': 'buddies',
+  '/api/events': 'events',
+  '/api/share': 'share',
+  '/api/tip': 'tip',
+  '/api/buddy-respond': 'buddy-respond',
 };
 
 const TYPES = {

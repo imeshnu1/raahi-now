@@ -101,6 +101,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink)}
 .big-balance{font-size:18px;margin:0 0 6px}
 .big-balance strong{font-family:var(--serif);font-weight:500;font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
 
+/* ---------- v2: card actions, match chip, form titles ---------- */
+.card-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.card-title{font-family:var(--serif);font-weight:500;font-size:23px;line-height:1.25;margin:8px 0 4px}
+.form-title{font-family:var(--serif);font-weight:500;font-size:24px;margin:0}
+.match-chip{cursor:pointer;text-transform:none;letter-spacing:.03em;font-size:11px}
+.match-chip:hover{border-color:var(--accent);color:var(--ink)}
+
 /* ---------- Lists & answers ---------- */
 .list-item{background:var(--white);border:1px solid var(--hairline);border-radius:4px;box-shadow:var(--shadow-soft);padding:20px 22px;margin-bottom:14px}
 .answer{border-left:2px solid var(--accent);padding:8px 14px;margin-top:10px;background:var(--cream);border-radius:0 4px 4px 0}

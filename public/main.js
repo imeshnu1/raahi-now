@@ -2,7 +2,7 @@
 // All payments are DEMO — methods are selected, recorded, and shown, but no
 // real money moves.
 
-const state = { markets: [], methods: [], market: 'all', drops: [], asks: [], bookings: [], wallet: null, localsByMarket: {}, user: null };
+const state = { markets: [], methods: [], market: 'all', drops: [], asks: [], bookings: [], wallet: null, localsByMarket: {}, user: null, offers: [], buddies: [], events: [] };
 let pendingAction = null;
 
 const $ = (s) => document.querySelector(s);
@@ -29,6 +29,7 @@ function renderHeader() {
     $('#walletPill').hidden = true;
   }
   renderWalletAddress();
+  syncGuestNames();
 }
 
 async function logout() {
@@ -211,7 +212,14 @@ function renderChips() {
     `<button data-market="${m.id}" class="${state.market === m.id ? 'active' : ''}">${esc(m.city)}${m.id !== 'all' ? ' · ' + esc(m.country) : ''}</button>`).join('');
   document.querySelectorAll('#marketChips button').forEach((b) =>
     b.addEventListener('click', () => { state.market = b.dataset.market; loadDrops(); }));
-  $('#askMarket').innerHTML = state.markets.map((m) => `<option value="${m.id}">${esc(m.city)}, ${esc(m.country)}</option>`).join('');
+  const options = state.markets.map((m) => `<option value="${m.id}">${esc(m.city)}, ${esc(m.country)}</option>`).join('');
+  $('#askMarket').innerHTML = options;
+  document.querySelectorAll('.market-select').forEach((sel) => { sel.innerHTML = options; });
+}
+
+// Guest name fields on the posting forms only matter when logged out.
+function syncGuestNames() {
+  document.querySelectorAll('[data-guest-name]').forEach((el) => { el.hidden = !!state.user; });
 }
 
 function dropCard(d) {
@@ -239,7 +247,10 @@ function dropCard(d) {
       ${action}
       <p class="local-line">By <strong>${esc(local.name || '')}</strong> · ${esc(local.role || '')} · verified local<br>
       <span class="meta">${esc(local.bookingLabel || '')} · ${local.bookingPriceCredits || ''} credits · gets paid in ${esc(local.payoutCurrency || '')}</span></p>
-      <button class="ghost" data-book="${local.id}" data-drop="${d.id}">Book ${esc(local.name || 'this person')}</button>
+      <div class="card-actions">
+        <button class="ghost" data-book="${local.id}" data-drop="${d.id}">Book ${esc(local.name || 'this person')}</button>
+        <button class="ghost" data-share-kind="drop" data-share-ref="${d.id}">Share</button>
+      </div>
     </div>
   </article>`;
 }
@@ -254,6 +265,7 @@ async function loadDrops() {
     : '<p class="muted">No Drops here right now. Try another market, or check back soon.</p>';
   document.querySelectorAll('[data-unlock]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openUnlock(b.dataset.unlock))));
   document.querySelectorAll('[data-book]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openBook(b.dataset.book, b.dataset.drop))));
+  bindCardActions($('#dropsGrid'));
 }
 
 async function loadBookings() {
@@ -263,8 +275,8 @@ async function loadBookings() {
   state.bookings = bookings;
   if (!bookings.length) { el.innerHTML = '<p class="muted">No bookings yet. Unlock a Drop, and you can book the local behind it.</p>'; return; }
   el.innerHTML = bookings.map((b) =>
-    `<div class="list-item"><strong>${esc(b.local ? b.local.name : b.localId)}</strong> · ${esc(b.when)} · ${b.people} people<br>
-     <span class="meta">Status: ${esc(b.status)} · booking request (preview) · paying with: ${esc(b.method)}</span></div>`).join('');
+    `<div class="list-item"><strong>${esc(b.local ? b.local.name : (b.localName || b.localId))}</strong> · ${esc(b.when)} · ${b.people} people<br>
+     <span class="meta">Status: ${esc(b.status)} · booking request (preview) · paying with: ${esc(b.method)}${b.pickupLocation ? ' · pickup: ' + esc(b.pickupLocation) : ''}${b.offerId ? ' · hosted moment' : ''}</span></div>`).join('');
 }
 
 async function loadAsks() {
@@ -352,6 +364,7 @@ function openBook(localId, dropId) {
     <form id="bookForm">
       <label>When <input name="when" required placeholder="Tomorrow 6:30 AM"></label>
       <label>People <input name="people" type="number" min="1" max="12" value="2"></label>
+      <label>Pickup spot (optional) <input name="pickupLocation" placeholder="Where should they meet you?"></label>
       <label>How you'd like to pay<select name="method">${methodOptions()}</select></label>
       <button class="accent" type="submit">Send booking request</button>
       <button class="ghost" type="button" id="cancelBtn">Cancel</button>
@@ -361,10 +374,317 @@ function openBook(localId, dropId) {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
-      await api('/api/bookings', { method: 'POST', body: JSON.stringify({ localId, dropId, when: fd.get('when'), people: fd.get('people'), method: fd.get('method') }) });
+      await api('/api/bookings', { method: 'POST', body: JSON.stringify({ localId, dropId, when: fd.get('when'), people: fd.get('people'), pickupLocation: fd.get('pickupLocation'), method: fd.get('method') }) });
       closeModal(); loadBookings();
       document.querySelector('[data-tab="drops"]').click();
     } catch (err) { alert(err.message); }
+  });
+}
+
+// Request a spot on a hosted Offer.
+function openOfferBook(offerId) {
+  const o = state.offers.find((x) => x.id === offerId);
+  if (!o) return;
+  openModal(`
+    <h3>Request a spot</h3>
+    <p>${esc(o.title)}</p>
+    <p class="meta">Hosted by ${esc(o.posterName)} · ${o.spotsLeft} of ${o.spots} spots left · ${o.free ? 'Free' : o.priceCredits + ' credits if they say yes'}</p>
+    <form id="offerBookForm">
+      <label>When <input name="when" required value="${esc(o.whenText || '')}" placeholder="Tomorrow, 10 am"></label>
+      <label>People <input name="people" type="number" min="1" max="12" value="1"></label>
+      <label>Pickup spot (optional) <input name="pickupLocation" placeholder="Where should they meet you?"></label>
+      <label>How you'd like to pay<select name="method">${methodOptions()}</select></label>
+      <button class="accent" type="submit">Send request</button>
+      <button class="ghost" type="button" id="cancelBtn">Cancel</button>
+    </form>`);
+  $('#cancelBtn').addEventListener('click', closeModal);
+  $('#offerBookForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await api('/api/bookings', { method: 'POST', body: JSON.stringify({ offerId, when: fd.get('when'), people: fd.get('people'), pickupLocation: fd.get('pickupLocation'), method: fd.get('method') }) });
+      closeModal(); loadBookings(); loadOffers();
+    } catch (err) { alert(err.message); }
+  });
+}
+
+// ---------- v2: Offers, Buddies, Events ----------
+function gotoTab(name) {
+  const btn = document.querySelector(`[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
+
+function matchChip(kind, item) {
+  if (!item.matches) return '';
+  return `<button class="badge soft match-chip" data-match-kind="${kind}" data-match-market="${item.marketId}" title="Izzy found a possible match">✦ Izzy match: ${item.matches} possible</button>`;
+}
+
+// Shared card buttons: Share (every card), Appreciate (offers/buddies/
+// events), and the Izzy match chip navigation.
+function bindCardActions(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-share-kind]').forEach((b) => b.addEventListener('click', () => openShare(b.dataset.shareKind, b.dataset.shareRef)));
+  root.querySelectorAll('[data-tip-kind]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openTip(b.dataset.tipKind, b.dataset.tipRef))));
+  root.querySelectorAll('[data-match-kind]').forEach((b) => b.addEventListener('click', () => {
+    const kind = b.dataset.matchKind;
+    state.market = b.dataset.matchMarket || state.market;
+    if (kind === 'buddy' || kind === 'buddy-event') { gotoTab('drops'); loadDrops(); loadOffers(); }
+    if (kind === 'offer' || kind === 'event') gotoTab('buddies');
+  }));
+}
+
+function offerCard(o) {
+  return `<article class="drop">
+    <div class="drop-body">
+      <div class="badges">
+        <span class="badge live">${o.free ? '● Free' : '● ' + o.priceCredits + ' credits'}</span>
+        <span class="badge soft">${esc(marketName(o.marketId))}</span>
+        <span class="badge soft">${o.spotsLeft} of ${o.spots} spots left</span>
+        ${matchChip('offer', o)}
+      </div>
+      <h3>${esc(o.title)}</h3>
+      <p>${esc(o.detail)}</p>
+      <p class="meta">${o.whenText ? 'When: ' + esc(o.whenText) + '<br>' : ''}Hosted by <strong>${esc(o.posterName)}</strong> — a regular person, posting as themselves.</p>
+      <div class="card-actions">
+        <button class="accent" data-reqspot="${o.id}" ${o.spotsLeft <= 0 ? 'disabled' : ''}>${o.spotsLeft > 0 ? 'Request a spot' : 'Full for now'}</button>
+        <button class="ghost" data-tip-kind="offer" data-tip-ref="${o.id}">Appreciate</button>
+        <button class="ghost" data-share-kind="offer" data-share-ref="${o.id}">Share</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+async function loadOffers() {
+  const el = $('#offersGrid');
+  try {
+    const { offers } = await api('/api/offers');
+    state.offers = offers;
+    el.innerHTML = offers.length
+      ? offers.map(offerCard).join('')
+      : '<p class="muted">No offers yet. Yours could be the first — post one below.</p>';
+    el.querySelectorAll('[data-reqspot]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openOfferBook(b.dataset.reqspot))));
+    bindCardActions(el);
+  } catch (err) {
+    el.innerHTML = `<p class="muted">Offers didn't load: ${esc(err.message)}</p>`;
+  }
+}
+
+function buddyCard(b) {
+  return `<div class="list-item">
+    <div class="badges">
+      <span class="badge soft">${esc(marketName(b.marketId))}</span>
+      <span class="badge soft">${b.responseCount} response${b.responseCount === 1 ? '' : 's'}</span>
+      ${matchChip('buddy', b)}
+    </div>
+    <h3 class="card-title">${esc(b.title)}</h3>
+    <p>${esc(b.detail)}</p>
+    <p class="meta">${b.whenText ? 'When: ' + esc(b.whenText) + ' · ' : ''}Posted by <strong>${esc(b.posterName)}</strong> · group of ${b.party}</p>
+    ${(b.responses || []).map((r) => `<div class="answer"><strong>${esc(r.firstName)}:</strong> ${esc(r.message)}</div>`).join('')}
+    <form class="answer-form" data-respond="${b.id}">
+      <input name="message" placeholder="Say hello and what you'd suggest" required>
+      <button class="ghost" type="submit">Respond</button>
+    </form>
+    <p class="meta">Only people with a Raahi profile can respond, so nobody travels with a total stranger.</p>
+    <div class="card-actions">
+      <button class="ghost" data-tip-kind="buddy" data-tip-ref="${b.id}">Appreciate</button>
+      <button class="ghost" data-share-kind="buddy" data-share-ref="${b.id}">Share</button>
+    </div>
+  </div>`;
+}
+
+async function loadBuddies() {
+  const el = $('#buddiesList');
+  try {
+    const { buddies } = await api('/api/buddies');
+    state.buddies = buddies;
+    el.innerHTML = buddies.length
+      ? buddies.map(buddyCard).join('')
+      : '<p class="muted">No buddy posts yet. Post yours above.</p>';
+    el.querySelectorAll('[data-respond]').forEach((f) => f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submit = async () => {
+        const fd = new FormData(f);
+        try {
+          await api('/api/buddy-respond', { method: 'POST', body: JSON.stringify({ buddyId: f.dataset.respond, message: fd.get('message') }) });
+          loadBuddies();
+        } catch (err) { alert(err.message); }
+      };
+      if (!state.user) { requireAuth(submit); return; }
+      await submit();
+    }));
+    bindCardActions(el);
+  } catch (err) {
+    el.innerHTML = `<p class="muted">Buddy posts didn't load: ${esc(err.message)}</p>`;
+  }
+}
+
+function eventCard(e) {
+  return `<div class="list-item">
+    <div class="badges">
+      <span class="badge live">● Event</span>
+      <span class="badge soft">${esc(marketName(e.marketId))}</span>
+      ${e.example ? '<span class="badge soft">Example event</span>' : ''}
+      ${matchChip('event', e)}
+    </div>
+    <h3 class="card-title">${esc(e.name)}</h3>
+    <p>${esc(e.detail)}</p>
+    <p class="meta">${e.dateText ? esc(e.dateText) + '<br>' : ''}${e.placeText ? 'Around: ' + esc(e.placeText) + '<br>' : ''}Hosted by <strong>${esc(e.posterName)}</strong></p>
+    <div class="card-actions">
+      <button class="ghost" data-tip-kind="event" data-tip-ref="${e.id}">Appreciate</button>
+      <button class="ghost" data-share-kind="event" data-share-ref="${e.id}">Share</button>
+    </div>
+  </div>`;
+}
+
+async function loadEvents() {
+  const el = $('#eventsList');
+  try {
+    const { events } = await api('/api/events');
+    state.events = events;
+    el.innerHTML = events.length
+      ? events.map(eventCard).join('')
+      : '<p class="muted">No events yet. Post the first one above.</p>';
+    bindCardActions(el);
+  } catch (err) {
+    el.innerHTML = `<p class="muted">Events didn't load: ${esc(err.message)}</p>`;
+  }
+}
+
+// ---------- v2: Share kit ----------
+function findShareItem(kind, ref) {
+  if (kind === 'drop') { const d = state.drops.find((x) => x.id === ref); return d ? { title: d.title, detail: d.whyNow, when: countdown(d.expiresAt), marketId: d.marketId } : null; }
+  if (kind === 'offer') { const o = state.offers.find((x) => x.id === ref); return o ? { title: o.title, detail: o.detail, when: o.whenText, marketId: o.marketId } : null; }
+  if (kind === 'buddy') { const b = state.buddies.find((x) => x.id === ref); return b ? { title: b.title, detail: b.detail, when: b.whenText, marketId: b.marketId } : null; }
+  if (kind === 'event') { const e = state.events.find((x) => x.id === ref); return e ? { title: e.name, detail: e.detail, when: e.dateText, marketId: e.marketId } : null; }
+  return null;
+}
+
+function shareCopies(kind, item) {
+  const where = marketName(item.marketId);
+  const signoff = 'Real locals. Real places. — Raahi NOW · now.raahi.io';
+  return {
+    instagram: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}\n\n${signoff}\n#RaahiNOW #LocalTravel`,
+    tiktok: `${item.title} — ${where} · ${signoff}`,
+    redditTitle: `${item.title} (${where})`,
+    redditBody: `${item.detail || ''}\n\n${item.when ? 'When: ' + item.when + '\n\n' : ''}Sharing this from Raahi NOW, where locals post things like this themselves. ${signoff}`,
+    facebook: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}\n\n${signoff}`,
+  };
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = String(text || '').split(/\s+/);
+  let line = '';
+  let lines = 0;
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y); y += lineHeight; lines += 1; line = w;
+      if (lines >= maxLines - 1) { line += '…'; break; }
+    } else { line = test; }
+  }
+  if (line) { ctx.fillText(line, x, y); y += lineHeight; }
+  return y;
+}
+
+function downloadShareCard(kind, item) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080; canvas.height = 1080;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#F4EFEA'; ctx.fillRect(0, 0, 1080, 1080);
+  ctx.fillStyle = '#E8926A'; ctx.fillRect(0, 0, 1080, 18);
+  ctx.fillStyle = '#1A1A1A';
+  ctx.font = '500 44px Georgia, serif';
+  ctx.fillText('RAAHI NOW', 84, 130);
+  ctx.font = 'italic 40px Georgia, serif';
+  let y = wrapCanvasText(ctx, item.title, 84, 300, 912, 92, 4);
+  ctx.fillStyle = '#6B6B6B';
+  ctx.font = '36px Georgia, serif';
+  y = wrapCanvasText(ctx, `${marketName(item.marketId)}${item.when ? ' · ' + item.when : ''}`, 84, y + 30, 912, 54, 2);
+  ctx.fillStyle = '#E8926A'; ctx.fillRect(84, y + 26, 120, 8);
+  ctx.fillStyle = '#1A1A1A';
+  ctx.font = '34px Georgia, serif';
+  ctx.fillText('Real locals. Real places.', 84, 940);
+  ctx.fillStyle = '#6B6B6B';
+  ctx.font = '30px Georgia, serif';
+  ctx.fillText('now.raahi.io', 84, 990);
+  const a = document.createElement('a');
+  a.download = `raahi-now-${kind}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+function openShare(kind, ref) {
+  const item = findShareItem(kind, ref);
+  if (!item) return;
+  const copies = shareCopies(kind, item);
+  const block = (label, text, id) => `
+    <label>${label}
+      <textarea id="${id}" rows="4" readonly>${esc(text)}</textarea>
+    </label>
+    <button class="ghost" type="button" data-copy="${id}">Copy</button>`;
+  openModal(`
+    <h3>Share this</h3>
+    <p>${esc(item.title)}</p>
+    <p class="meta">Send it anywhere. The exact spot, and booking the person, only happen on Raahi.</p>
+    ${navigator.share ? '<button class="accent" type="button" id="webShareBtn">Share from this device</button>' : ''}
+    <form>
+      ${block('Instagram caption', copies.instagram, 'copyIg')}
+      ${block('TikTok / YouTube Shorts title', copies.tiktok, 'copyTt')}
+      ${block('Reddit title', copies.redditTitle, 'copyRt')}
+      ${block('Reddit body', copies.redditBody, 'copyRb')}
+      ${block('Facebook post', copies.facebook, 'copyFb')}
+      <button class="ghost" type="button" id="cardBtn">Download share card (PNG)</button>
+      <button class="accent" type="button" id="queueBtn">Queue for auto-posting</button>
+      <p class="meta">Auto-posting connects to Raahi's social engine. Queued items go out when it's connected.</p>
+      <p class="msg" id="shareMsg"></p>
+      <button class="ghost" type="button" id="cancelBtn">Close</button>
+    </form>`);
+  $('#cancelBtn').addEventListener('click', closeModal);
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+    const ta = document.getElementById(b.dataset.copy);
+    try { await navigator.clipboard.writeText(ta.value); b.textContent = 'Copied'; }
+    catch { ta.select(); document.execCommand('copy'); b.textContent = 'Copied'; }
+    setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+  }));
+  const ws = $('#webShareBtn');
+  if (ws) ws.addEventListener('click', async () => {
+    try { await navigator.share({ title: item.title, text: copies.facebook, url: 'https://now.raahi.io' }); } catch { /* user closed it */ }
+  });
+  $('#cardBtn').addEventListener('click', () => downloadShareCard(kind, item));
+  $('#queueBtn').addEventListener('click', async () => {
+    const msg = $('#shareMsg');
+    try {
+      const r = await api('/api/share', { method: 'POST', body: JSON.stringify({ kind, refId: ref }) });
+      msg.textContent = r.message;
+    } catch (err) { msg.textContent = err.message; }
+  });
+}
+
+// ---------- v2: Appreciation tips ----------
+function openTip(kind, ref) {
+  const item = findShareItem(kind, ref);
+  if (!item) return;
+  openModal(`
+    <h3>Say thank-you</h3>
+    <p>${esc(item.title)}</p>
+    <p class="meta">A small tip, from your wallet to theirs, as a thank-you. This is a preview — no real money moves.</p>
+    <form id="tipForm">
+      <label>Credits <input name="amount" type="number" min="1" max="1000" value="3" required></label>
+      <label>Pay with<select name="method">${methodOptions()}</select></label>
+      <button class="accent" type="submit">Send thank-you</button>
+      <button class="ghost" type="button" id="cancelBtn">Cancel</button>
+      <p class="msg" id="tipMsg"></p>
+    </form>`);
+  $('#cancelBtn').addEventListener('click', closeModal);
+  $('#tipForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const r = await api('/api/tip', { method: 'POST', body: JSON.stringify({ kind, refId: ref, amount: Number(fd.get('amount')), method: fd.get('method') }) });
+      state.wallet = r.wallet; renderWallet();
+      $('#tipMsg').textContent = r.message;
+      setTimeout(closeModal, 1200);
+    } catch (err) { $('#tipMsg').textContent = err.message; }
   });
 }
 
@@ -391,6 +711,46 @@ $('#topupForm').addEventListener('submit', async (e) => {
     const r = await api('/api/topup', { method: 'POST', body: JSON.stringify({ amount: Number($('#topupAmount').value), method: $('#topupMethod').value }) });
     state.wallet = r.wallet; renderWallet();
     msg.textContent = r.message;
+  } catch (err) { msg.textContent = err.message; }
+});
+
+$('#offerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#offerMsg');
+  try {
+    const r = await api('/api/offers', { method: 'POST', body: JSON.stringify({
+      title: $('#offerTitle').value, marketId: $('#offerMarket').value,
+      detail: $('#offerDetail').value, whenText: $('#offerWhen').value,
+      spots: Number($('#offerSpots').value), priceCredits: Number($('#offerPrice').value),
+      name: $('#offerName').value }) });
+    msg.textContent = r.message + (r.claimToken ? ` Your claim code: ${r.claimToken} — keep it somewhere safe.` : '');
+    e.target.reset(); renderChips(); loadOffers();
+  } catch (err) { msg.textContent = err.message; }
+});
+
+$('#buddyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#buddyMsg');
+  try {
+    const r = await api('/api/buddies', { method: 'POST', body: JSON.stringify({
+      title: $('#buddyTitle').value, marketId: $('#buddyMarket').value,
+      detail: $('#buddyDetail').value, whenText: $('#buddyWhen').value,
+      party: Number($('#buddyParty').value), name: $('#buddyName').value }) });
+    msg.textContent = r.message;
+    e.target.reset(); renderChips(); loadBuddies();
+  } catch (err) { msg.textContent = err.message; }
+});
+
+$('#eventForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#eventMsg');
+  try {
+    const r = await api('/api/events', { method: 'POST', body: JSON.stringify({
+      name: $('#eventName').value, marketId: $('#eventMarket').value,
+      detail: $('#eventDetail').value, dateText: $('#eventDate').value,
+      placeText: $('#eventPlace').value, hostName: $('#eventNameYours').value }) });
+    msg.textContent = r.message + (r.claimToken ? ` Your claim code: ${r.claimToken} — keep it somewhere safe.` : '');
+    e.target.reset(); renderChips(); loadEvents();
   } catch (err) { msg.textContent = err.message; }
 });
 
@@ -426,7 +786,11 @@ setInterval(() => {
     await loadDrops();
     await loadAsks();
     await loadBookings();
+    await loadOffers();
+    await loadBuddies();
+    await loadEvents();
     renderWalletAddress();
+    syncGuestNames();
   } catch (err) {
     $('#dropsGrid').innerHTML = `<p class="muted">Something didn't load: ${esc(err.message)}. Try refreshing the page.</p>`;
   }

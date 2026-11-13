@@ -28,6 +28,8 @@
 <nav class="tabs" id="tabs">
   <button data-tab="drops" class="active">Drops</button>
   <button data-tab="ask">Ask Izzy</button>
+  <button data-tab="buddies">Buddies</button>
+  <button data-tab="events">Events</button>
   <button data-tab="wallet">Wallet</button>
   <button data-tab="plan">Plan with Leo</button>
 </nav>
@@ -39,6 +41,34 @@
     <p class="lede">Real tips from real locals, by name. Each Drop is only around for a short while, and the exact spot stays hidden until you unlock it.</p>
     <div class="chips" id="marketChips"></div>
     <div class="grid" id="dropsGrid"><p class="muted">Loading Drops…</p></div>
+
+    <div id="offersBlock">
+      <h2>Hosted by locals</h2>
+      <p class="lede">Anyone can host a small moment — a couple of free hours, a spare seat in the car, a walk they love. Some are free. Some cost a few credits. Post your own below; you don't need an app to start.</p>
+      <div class="grid" id="offersGrid"><p class="muted">Loading offers…</p></div>
+      <form id="offerForm" class="card">
+        <h3 class="form-title">Post your own</h3>
+        <label>What are you offering?
+          <input id="offerTitle" required placeholder="I have 2 hours to show you around">
+        </label>
+        <label>Where?
+          <select id="offerMarket" class="market-select" required></select>
+        </label>
+        <label>Tell people a little more
+          <textarea id="offerDetail" rows="3" required placeholder="I'm a regular person, not a tour guide. I know the quiet streets and the good coffee. I have 2 spots in my car."></textarea>
+        </label>
+        <div class="row">
+          <label>When <input id="offerWhen" type="text" placeholder="Tomorrow, 10 am – noon"></label>
+          <label>Spots <input id="offerSpots" type="number" min="1" max="20" value="2" required></label>
+          <label>Price in credits <input id="offerPrice" type="number" min="0" max="1000" value="0" required></label>
+        </div>
+        <p class="meta">Price 0 means free — plenty of people host just for the company. To get paid for a priced offer, you'll link it to a free Raahi Expert account with a claim code.</p>
+        <label data-guest-name>Your name <input id="offerName" type="text" placeholder="Your name"></label>
+        <button type="submit" class="accent">Post my offer</button>
+        <p class="msg" id="offerMsg"></p>
+      </form>
+    </div>
+
     <h2>Your bookings</h2>
     <div id="bookingsList"><p class="muted">No bookings yet. Unlock a Drop, and you can book the local behind it.</p></div>
   </section>
@@ -65,6 +95,56 @@
       <p class="msg" id="askMsg"></p>
     </form>
     <div id="asksList"></div>
+  </section>
+
+  <!-- BUDDIES -->
+  <section id="tab-buddies" class="tab">
+    <h1>Travel buddies</h1>
+    <p class="lede">Travelling somewhere and you'd rather not do it alone? Post what you'd like to do. It's free, and there's no payment involved. Only people with a Raahi profile can respond, so nobody travels with a total stranger. If you had a great time, you can say thank-you with a tip afterwards.</p>
+    <form id="buddyForm" class="card">
+      <label>What would you like to do?
+        <input id="buddyTitle" required placeholder="Visiting NYC — looking for a food walk buddy">
+      </label>
+      <label>Where?
+        <select id="buddyMarket" class="market-select" required></select>
+      </label>
+      <label>Tell people a little more
+        <textarea id="buddyDetail" rows="3" required placeholder="I'm in town for two days. I'd love to explore with somebody local or another traveller. Easy pace, good food, no big crowds."></textarea>
+      </label>
+      <div class="row">
+        <label>When <input id="buddyWhen" type="text" placeholder="This Saturday afternoon"></label>
+        <label>How many of you? <input id="buddyParty" type="number" min="1" max="12" value="1" required></label>
+      </div>
+      <label data-guest-name>Your name <input id="buddyName" type="text" placeholder="Your name"></label>
+      <button type="submit" class="accent">Post my buddy request</button>
+      <p class="msg" id="buddyMsg"></p>
+    </form>
+    <div id="buddiesList"></div>
+  </section>
+
+  <!-- EVENTS -->
+  <section id="tab-events" class="tab">
+    <h1>Events</h1>
+    <p class="lede">Local makers, vendors, and hosts post their events here — tastings, walks, small gatherings. Post yours and it can travel: every event gets a share kit, and queued posts go out to Raahi's social channels when the social engine is connected.</p>
+    <form id="eventForm" class="card">
+      <label>Event name
+        <input id="eventName" required placeholder="Tamara's Cheese Tasting">
+      </label>
+      <label>Where?
+        <select id="eventMarket" class="market-select" required></select>
+      </label>
+      <label>What is it?
+        <textarea id="eventDetail" rows="3" placeholder="A small tasting of this season's cheeses, at the maker's own table."></textarea>
+      </label>
+      <div class="row">
+        <label>When <input id="eventDate" type="text" required placeholder="Sat Nov 14, 2–5 pm"></label>
+        <label>Where exactly <input id="eventPlace" type="text" placeholder="Downtown Ellsworth"></label>
+      </div>
+      <label data-guest-name>Your name <input id="eventNameYours" type="text" placeholder="Your name"></label>
+      <button type="submit" class="accent">Post my event</button>
+      <p class="msg" id="eventMsg"></p>
+    </form>
+    <div id="eventsList"></div>
   </section>
 
   <!-- WALLET -->
@@ -136,6 +216,7 @@
 
 <footer>
   <p>RAAHI NOW · now.raahi.io · Save the dime. Spend the time. · Preview build — the photos are stand-ins until locals share their own.</p>
+  <p>Part of Raahi: <a href="https://app.raahi.io" target="_blank" rel="noopener">Travelers app</a> · <a href="https://raahi.io" target="_blank" rel="noopener">Experts</a> · <a href="https://raahi.io" target="_blank" rel="noopener">raahi.io</a></p>
 </footer>
 
 <!-- Unlock / Book modal -->

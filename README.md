@@ -8,6 +8,20 @@ This is the real, runnable source-code version of Raahi NOW, built to live at **
 
 ---
 
+## What's new in v2 — two-sided posting, events, Izzy slice 1
+
+- **Offers** — any local (even a guest, no app needed) can post a hosted moment ("I have 2 hours and 2 spots in my car"). Guests get a one-time **claim code**: create a free Raahi Expert account later and link the post to get paid. `GET/POST /api/offers`
+- **Buddy posts** — travelers post free "explore together" requests. Posting is open (name required for guests), but **only logged-in Raahi profiles can respond** — nobody travels with a total stranger. `GET/POST /api/buddies`, `POST /api/buddy-respond`
+- **Events** — vendors post events (one seeded example: Tamara's Cheese Tasting, Ellsworth). `GET/POST /api/events`
+- **Share kit + outbox** — every Drop/Offer/Event/Buddy card has per-platform copy (Instagram, TikTok/Shorts, Reddit, Facebook), Web Share, a downloadable PNG card, and "Queue for auto-posting" (`POST /api/share` → `outbox` table, drained later by Raahi's social engine). The UI honestly says "Queued", never "Posted".
+- **Appreciation tips** — logged-in users can tip an Offer/Buddy/Event poster through the payments layer (`POST /api/tip`); you can't tip your own post.
+- **Izzy matching, slice 1** — `lib/engine.js`, a pure rule-based matcher (same market, complementary post kinds). Lists carry a `matches` count; cards show an "Izzy match" chip. No AI claims.
+- **Connection readiness** — NOW stays a separate product, with seams ready: `lib/config.js` (links to raahi.io / app.raahi.io, reserved `raahi-now://` scheme), `users.external_id` for a future Firebase identity map, booking `pickupLocation`, and **[INTEGRATION.md](INTEGRATION.md)** with the full connection plan.
+- Tabs are now: Drops (Live Drops + Hosted by locals) · Ask Izzy · Buddies · Events · Wallet · Plan with Leo.
+- Function budget: **11** serverless files in `api/` (Hobby limit 12) — auth, posts, and engagement endpoints are consolidated behind `vercel.json` rewrites.
+
+---
+
 ## Run it locally
 
 Requirements: Node.js 18 or newer. There are **no dependencies to install** (the app uses only the Node standard library), but `npm install` is harmless and generates the lockfile.
@@ -38,25 +52,27 @@ raahi-now-app/
 ├── public/styles.css # Palette only: #1A1A1A, #FFFFFF, #E8926A, #F4EFEA, #6B6B6B
 ├── public/main.js    # Frontend logic — talks only to /api/* (in public/, the static output dir)
 ├── server.js         # Local dev server (serves the frontend + /api locally)
-├── api/              # Vercel serverless functions (one file per endpoint)
+├── api/              # Vercel serverless functions (11 files; Hobby limit is 12)
 │   ├── drops.js      GET  /api/drops?market=nyc|boston|ellsworth|kyoto|sigiriya|all
 │   ├── markets.js    GET  /api/markets
 │   ├── unlock.js     POST /api/unlock    { dropId, method }
 │   ├── asks.js       GET/POST /api/asks
 │   ├── answer.js     POST /api/answer    { askId, localId, text }
 │   ├── bookings.js   GET/POST /api/bookings     (login required)
-│   ├── wallet.js     GET  /api/wallet           (login required)
+│   ├── wallet.js     GET  /api/wallet  + /api/wallet-address (rewrite)
 │   ├── topup.js      POST /api/topup     { amount, method }  (login required)
-│   ├── signup.js     POST /api/signup    { name, email, password }
-│   ├── login.js      POST /api/login     { email, password }
-│   ├── logout.js     POST /api/logout
-│   ├── me.js         GET  /api/me
-│   └── wallet-address.js  POST /api/wallet-address { address }  (login required)
+│   ├── auth.js       /api/signup /api/login /api/logout /api/me (rewrites)
+│   ├── posts.js      /api/offers /api/buddies /api/events   (rewrites, v2)
+│   └── engage.js     /api/share /api/tip /api/buddy-respond (rewrites, v2)
 ├── lib/
 │   ├── api.js        # All API handlers — shared by server.js and /api functions
 │   ├── store.js      # Data layer: Neon Postgres, or local JSON file fallback
 │   ├── auth.js       # Accounts: scrypt password hashing + cookie sessions
-│   └── payments.js   # Payment provider abstraction (demo provider built in)
+│   ├── payments.js   # Payment provider abstraction (demo provider built in)
+│   ├── engine.js     # Izzy matching, slice 1 (pure, rule-based) — v2
+│   └── config.js     # Links to Raahi's other apps + connection config — v2
+├── INTEGRATION.md    # How NOW connects to the main Raahi apps later
+├── tests/run.cjs     # Full local test suite (fallback store): npm test
 ├── data/
 │   ├── seed.json     # Markets, locals, Drops, payment methods, pricing config
 │   └── dev-db.json   # Local dev fallback store (created at runtime, gitignored)
