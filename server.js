@@ -34,6 +34,9 @@ const API_ROUTES = {
   '/api/share': 'share',
   '/api/tip': 'tip',
   '/api/buddy-respond': 'buddy-respond',
+  '/api/outbox': 'outbox',
+  '/api/outbox-update': 'outbox-update',
+  '/api/social-accounts': 'social-accounts',
 };
 
 const TYPES = {

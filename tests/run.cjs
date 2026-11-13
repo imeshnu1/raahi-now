@@ -9,7 +9,9 @@
 //  - boots server.js on a test port against a FRESH data/dev-db.json
 //    (an existing dev DB is backed up and restored afterwards),
 //  - runs the v2 feature tests (offers, buddies, events, share outbox,
-//    tips, Izzy matches, offer bookings, pickup location) and the core
+//    tips, Izzy matches, offer bookings, pickup location), the payment
+//    methods reset (US dollars first, small crypto set), the social
+//    engine drain endpoints (token-gated outbox), and the core
 //    regression set (auth gate, per-user wallet, unlock, QA B4–B9),
 //  - prints PASS/FAIL per check and exits non-zero on any failure.
 
@@ -51,6 +53,14 @@ function staticChecks() {
   } catch { /* stays false */ }
   check('static: seed.json valid, 6 Drops + Tamara cheese event', seedOk);
 
+  let methodIds = [];
+  try {
+    methodIds = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'seed.json'), 'utf8')).paymentMethods.map((m) => m.id);
+  } catch { /* stays empty */ }
+  check('static: paymentMethods exactly [usd, credits, ninjji, jellyjelly, wobbles, sol, usdc] (US dollars first)',
+    JSON.stringify(methodIds) === JSON.stringify(['usd', 'credits', 'ninjji', 'jellyjelly', 'wobbles', 'sol', 'usdc']),
+    methodIds.join(','));
+
   const css = fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8');
   const palette = new Set(['#1A1A1A', '#FFFFFF', '#E8926A', '#F4EFEA', '#6B6B6B']);
   const hexes = new Set([...css.matchAll(/#[0-9A-Fa-f]{6}/g)].map((m) => m[0].toUpperCase()));
@@ -63,10 +73,10 @@ function staticChecks() {
 }
 
 // ---------- tiny HTTP client with cookie jar ----------
-async function call(method, p, { body, cookie } = {}) {
+async function call(method, p, { body, cookie, headers } = {}) {
   const res = await fetch(`${BASE}${p}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...(headers || {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -93,6 +103,11 @@ async function apiTests() {
 
   const me = await call('GET', '/api/me', { cookie: cookieB });
   check('/api/me includes externalId (null for now)', me.status === 200 && 'externalId' in me.data.user && me.data.user.externalId === null);
+  check('wallet payload currencies == [USD] (US dollars only for now)',
+    JSON.stringify(a.data.wallet && a.data.wallet.currencies) === JSON.stringify(['USD']),
+    JSON.stringify(a.data.wallet && a.data.wallet.currencies));
+  check('wallet payload paymentMethods start with US dollars',
+    !!a.data.wallet && Array.isArray(a.data.wallet.paymentMethods) && a.data.wallet.paymentMethods[0].id === 'usd' && a.data.wallet.paymentMethods[0].label === 'US dollars');
 
   // --- offers ---
   const guestOffer = await call('POST', '/api/offers', { body: { name: 'Guest Gail', marketId: 'nyc', title: 'I have 2 hours to show you around', detail: 'Regular person, not a guide. 2 spots in my car.', whenText: 'Tomorrow, 10 am', spots: 2, priceCredits: 10 } });
@@ -161,6 +176,47 @@ async function apiTests() {
   check('outbox row persisted (kind event, platform all, status queued)',
     !!outRow && outRow.kind === 'event' && outRow.platform === 'all' && outRow.status === 'queued' && /Raahi NOW/.test(outRow.payload || ''));
 
+  // --- social engine drain (token-gated; harness sets SOCIAL_ENGINE_TOKEN) ---
+  const SOCIAL_HDR = { 'x-social-token': 'test-social-token' };
+  const outNoTok = await call('GET', '/api/outbox');
+  check('GET /api/outbox without token → 401', outNoTok.status === 401);
+  const outBadTok = await call('GET', '/api/outbox', { headers: { 'x-social-token': 'wrong-token' } });
+  check('GET /api/outbox with wrong token → 401', outBadTok.status === 401);
+  const outOk = await call('GET', '/api/outbox', { headers: SOCIAL_HDR });
+  const queuedRow = (outOk.data.outbox || []).find((o) => o.id === (share.data && share.data.id));
+  check('GET /api/outbox with token → 200 + queued share row present',
+    outOk.status === 200 && !!queuedRow && queuedRow.status === 'queued',
+    outOk.status !== 200 ? JSON.stringify(outOk.data) : undefined);
+  check('queued row carries payloads for all 5 platforms',
+    !!queuedRow && ['instagram', 'tiktok', 'youtube', 'reddit', 'facebook'].every((p) => !!queuedRow.payloads && !!queuedRow.payloads[p])
+      && /Tamara/.test(queuedRow.payloads.instagram) && /Raahi NOW/.test(queuedRow.payloads.facebook),
+    queuedRow && queuedRow.payloads ? Object.keys(queuedRow.payloads).join(',') : 'no payloads');
+  check('queued row / response carries the account registry (5 platforms)',
+    (Array.isArray(outOk.data.accounts) && outOk.data.accounts.length === 5)
+      || (!!queuedRow && Array.isArray(queuedRow.accounts) && queuedRow.accounts.length === 5));
+
+  const updNoTok = await call('POST', '/api/outbox-update', { body: { id: share.data && share.data.id, status: 'posted' } });
+  check('POST /api/outbox-update without token → 401', updNoTok.status === 401);
+  const updBadStatus = await call('POST', '/api/outbox-update', { headers: SOCIAL_HDR, body: { id: share.data && share.data.id, status: 'bogus' } });
+  check('POST /api/outbox-update invalid status → 400', updBadStatus.status === 400);
+  const updUnknown = await call('POST', '/api/outbox-update', { headers: SOCIAL_HDR, body: { id: 'out-does-not-exist', status: 'posted' } });
+  check('POST /api/outbox-update unknown id → 404', updUnknown.status === 404);
+  const upd = await call('POST', '/api/outbox-update', { headers: SOCIAL_HDR, body: { id: share.data && share.data.id, status: 'posted', externalUrl: 'https://instagram.com/p/test123' } });
+  check('POST /api/outbox-update posted + externalUrl → 200, row updated',
+    upd.status === 200 && upd.data.outbox && upd.data.outbox.status === 'posted'
+      && upd.data.outbox.externalUrl === 'https://instagram.com/p/test123' && !!upd.data.outbox.postedAt,
+    upd.status !== 200 ? JSON.stringify(upd.data) : undefined);
+  const outAfter = await call('GET', '/api/outbox', { headers: SOCIAL_HDR });
+  check('posted row no longer in the queued drain list',
+    !(outAfter.data.outbox || []).some((o) => o.id === (share.data && share.data.id)));
+
+  const accounts = await call('GET', '/api/social-accounts');
+  check('GET /api/social-accounts → 200, 5 platforms, handles null',
+    accounts.status === 200 && Array.isArray(accounts.data.accounts) && accounts.data.accounts.length === 5
+      && accounts.data.accounts.every((x) => x.handle === null)
+      && ['instagram', 'tiktok', 'youtube', 'reddit', 'facebook'].every((p) => accounts.data.accounts.some((x) => x.platform === p)),
+    accounts.status !== 200 ? JSON.stringify(accounts.data) : undefined);
+
   // --- regression: unlock gate + flow (user B balance tracking) ---
   const unlockAnon = await call('POST', '/api/unlock', { body: { dropId: 'drop-kyoto-food', method: 'ninjji' } });
   check('regression: unlock without session → 401', unlockAnon.status === 401);
@@ -218,6 +274,27 @@ async function apiTests() {
   check('regression B9: top-up with no method → 400', b9.status === 400);
   const b8 = await call('POST', '/api/topup', { cookie: cookieB, body: { amount: 5, method: 'credits' } });
   check('regression B8: top-up with credits → 400', b8.status === 400);
+
+  // --- payment methods reset (US dollars first; small crypto set) ---
+  // Runs on user A so user B's tracked balances above stay untouched.
+  let allValidTopups = true;
+  for (const m of ['usd', 'ninjji', 'jellyjelly', 'wobbles', 'sol', 'usdc']) {
+    const r = await call('POST', '/api/topup', { cookie: cookieA, body: { amount: 2, method: m } });
+    if (r.status !== 200) { allValidTopups = false; console.log(`  top-up via ${m} → ${r.status} ${JSON.stringify(r.data)}`); }
+  }
+  check('top-up succeeds with US dollars + all 5 cryptos', allValidTopups);
+  let allRemovedRejected = true;
+  for (const m of ['btc', 'eth', 'card', 'jpy']) {
+    const r = await call('POST', '/api/topup', { cookie: cookieA, body: { amount: 2, method: m } });
+    if (r.status !== 400) { allRemovedRejected = false; console.log(`  top-up via removed method ${m} → ${r.status}`); }
+  }
+  check('top-up with removed methods (btc/eth/card/jpy) → 400 unknown method', allRemovedRejected);
+  const unlockSol = await call('POST', '/api/unlock', { cookie: cookieA, body: { dropId: 'drop-nyc-birds', method: 'sol' } });
+  check('unlock with SOL → 200', unlockSol.status === 200, unlockSol.status !== 200 ? JSON.stringify(unlockSol.data) : undefined);
+  const unlockJelly = await call('POST', '/api/unlock', { cookie: cookieA, body: { dropId: 'drop-boston-rain', method: 'jellyjelly' } });
+  check('unlock with JellyJelly → 200', unlockJelly.status === 200, unlockJelly.status !== 200 ? JSON.stringify(unlockJelly.data) : undefined);
+  const unlockEth = await call('POST', '/api/unlock', { cookie: cookieA, body: { dropId: 'drop-acadia-sunset', method: 'eth' } });
+  check('unlock with removed method (eth) → 400', unlockEth.status === 400);
 }
 
 async function main() {
@@ -225,7 +302,7 @@ async function main() {
 
   const hadDb = fs.existsSync(DB_PATH);
   if (hadDb) fs.renameSync(DB_PATH, BAK_PATH);
-  const env = { ...process.env, PORT: String(PORT) };
+  const env = { ...process.env, PORT: String(PORT), SOCIAL_ENGINE_TOKEN: 'test-social-token' };
   delete env.DATABASE_URL; // force the local fallback store
   const server = spawn('node', [path.join(ROOT, 'server.js')], { env, stdio: 'pipe' });
   let serverLog = '';

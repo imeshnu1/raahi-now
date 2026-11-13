@@ -49,7 +49,7 @@ map onto the main app's booking shape like this:
 | `when` (free text) | booking date/time | NOW is free-text today; the main app wants a real date + time — parse/confirm at handoff |
 | `people` | guests | Already validated whole 1–12 (QA B5) |
 | `pickupLocation` | pickup location | Optional, already collected in the book modal |
-| `method` | payment method | Open set (Ninjji/crypto/card/fiat); the main app's checkout is real-currency — settlement mapping is a product decision, not a code problem |
+| `method` | payment method | Open set (US dollars, credits, Ninjji, JellyJelly, Wobbles, SOL, USDC); the main app's checkout is real-currency — settlement mapping is a product decision, not a code problem |
 | `status` | status | NOW starts at `waiting for confirmation`, same lifecycle idea |
 
 Until the handoff exists, NOW bookings stay in NOW. Nothing is sent
@@ -71,6 +71,52 @@ bug).
   `status = 'queued'`, posts them, and marks them sent. NOW never
   claims something was posted — the UI says "Queued" until the engine
   confirms otherwise.
+
+### Social engine connection (backend — ready now)
+
+The drain API already exists, behind the existing `api/engage.js`
+function (rewrites in `vercel.json`; no extra serverless functions):
+
+| Endpoint | Method | Auth | What it does |
+|---|---|---|---|
+| `/api/outbox` | GET | `x-social-token` header | Queued rows (`status = 'queued'`), **oldest first**. Each row is enriched with `payloads` — the per-platform post text from `lib/social.js → buildPayloads(item)` — and `accounts`, the account registry (below). |
+| `/api/outbox-update` | POST | `x-social-token` header | Body `{ id, status: 'posted' \| 'failed', externalUrl?, note? }`. A `posted` update stamps `posted_at` and stores `externalUrl`; a `failed` update stores `note` in `fail_note`. Invalid status → 400, unknown id → 404. Returns the updated row. |
+| `/api/social-accounts` | GET | public | The account registry: platform, handle (null until provided), status, formats. |
+
+**Auth:** both drain endpoints require the header
+`x-social-token: <SOCIAL_ENGINE_TOKEN>`. The token is the
+`SOCIAL_ENGINE_TOKEN` environment variable — set it in the Vercel
+project (Production) **and** in the social-pilot's environment on the
+Mac mini, to the same value. If the env var is unset on the server,
+the drain endpoints return 401 for everyone: closed by default.
+
+**Statuses:** an outbox row starts at `queued` → the engine moves it
+to exactly one of `posted` (with `external_url` + `posted_at`) or
+`failed` (with `fail_note`). Posted/failed rows no longer appear in
+`GET /api/outbox`.
+
+**Account registry:** `lib/social.js → ACCOUNTS` — instagram, tiktok,
+youtube, reddit, facebook, each with its post formats. Handles are
+`null` and status is `awaiting accounts from Imesh` until the real
+accounts are handed over.
+
+**When Imesh provides the accounts, the exact steps are:**
+
+1. In `lib/social.js`, fill each platform's `handle` and flip its
+   `status` to `connected`. Deploy (normal GitHub → Vercel flow).
+2. Set `SOCIAL_ENGINE_TOKEN` in Vercel (Production env) and in the
+   Mac mini social-pilot's env — same value both sides.
+3. The social-pilot polls `GET https://now.raahi.io/api/outbox` with
+   the `x-social-token` header every N minutes (suggest 15), takes
+   the oldest queued rows first, and posts each row's `payloads` for
+   its platform(s) to the connected account.
+4. After each post it calls `POST /api/outbox-update` with
+   `{ id, status: 'posted', externalUrl }`, or
+   `{ id, status: 'failed', note }` when a post fails so a human can
+   see why.
+
+Nothing in NOW changes when this goes live — the UI already says
+"Queued", and queued rows simply start draining.
 
 ## 4. Izzy — the central travel engine
 

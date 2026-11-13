@@ -63,12 +63,13 @@ raahi-now-app/
 │   ├── topup.js      POST /api/topup     { amount, method }  (login required)
 │   ├── auth.js       /api/signup /api/login /api/logout /api/me (rewrites)
 │   ├── posts.js      /api/offers /api/buddies /api/events   (rewrites, v2)
-│   └── engage.js     /api/share /api/tip /api/buddy-respond (rewrites, v2)
+│   └── engage.js     /api/share /api/tip /api/buddy-respond /api/outbox /api/outbox-update /api/social-accounts (rewrites, v2)
 ├── lib/
 │   ├── api.js        # All API handlers — shared by server.js and /api functions
 │   ├── store.js      # Data layer: Neon Postgres, or local JSON file fallback
 │   ├── auth.js       # Accounts: scrypt password hashing + cookie sessions
 │   ├── payments.js   # Payment provider abstraction (demo provider built in)
+│   ├── social.js     # Social account registry + per-platform post text for the engine — v2
 │   ├── engine.js     # Izzy matching, slice 1 (pure, rule-based) — v2
 │   └── config.js     # Links to Raahi's other apps + connection config — v2
 ├── INTEGRATION.md    # How NOW connects to the main Raahi apps later
@@ -101,17 +102,18 @@ Markets, locals, Drops content and payment methods stay as seed data in `data/se
 
 ## Payments (demo, open by design)
 
-Payment method selection is currency-agnostic and defined in `seed.json`:
+Payment methods are defined in `seed.json`, in this order (US dollars first — amounts everywhere are shown in US dollars for now):
 
-- **Ninjji** — native and preferred, listed first, lowest fees in the real model
+- **US dollars**
 - **Raahi Credits** — 1 credit = $1 display value
-- **Other crypto** — BTC, ETH, USDC
-- **Card**
-- **Fiat** — USD, JPY, LKR (per market; each market config carries its currency)
+- **Ninjji** — native and preferred, lowest fees in the real model
+- **JellyJelly**, **Wobbles**, **SOL**, **USDC**
 
-No currency is exclusive. Locals choose their own payout currency (each local record carries `payoutCurrency`). Pricing config lives in one place in `seed.json`: Ask = 5 credits, unlocks = 1–3 credits per Drop, locals keep 80% / Raahi 20%.
+The crypto set is deliberately small to start. Locals choose their own payout currency (each local record carries `payoutCurrency`). Pricing config lives in one place in `seed.json`: Ask = 5 credits, unlocks = 1–3 credits per Drop, locals keep 80% / Raahi 20%.
 
-**Provider abstraction:** every charge goes through `lib/payments.js` — handlers call `getProvider().createCharge(...)`, never a processor directly. The built-in provider is the **demo** provider (records marked demo, no real money). To connect a real crypto processor later: write one provider file implementing `createCharge` / `getStatus`, register it in `lib/payments.js`, and set env `PAYMENTS_PROVIDER` plus that processor's keys (e.g. `NINJJI_API_KEY`, `COINBASE_COMMERCE_API_KEY`, `BTCPAY_URL` / `BTCPAY_API_KEY`) — configuration + one file, not a rewrite. Paying with a crypto method while a wallet is connected records the wallet address on the payment record.
+**Provider abstraction:** every charge goes through `lib/payments.js` — handlers call `getProvider().createCharge(...)`, never a processor directly. The built-in provider is the **demo** provider (records marked demo, no real money). To connect a real crypto processor later: write one provider file implementing `createCharge` / `getStatus`, register it in `lib/payments.js`, and set env `PAYMENTS_PROVIDER` plus that processor's keys (e.g. `NINJJI_API_KEY`, `COINBASE_COMMERCE_API_KEY`) — configuration + one file, not a rewrite. Paying with a crypto method while a wallet is connected records the wallet address on the payment record.
+
+**Social engine:** "Queue for auto-posting" writes to the `outbox` table. The Mac-mini social-pilot drains it through `GET /api/outbox` and reports back via `POST /api/outbox-update`, both gated by the `x-social-token` header (`SOCIAL_ENGINE_TOKEN` env var); `GET /api/social-accounts` publicly lists the account registry in `lib/social.js` (handles are null until Imesh provides the accounts). Full connection steps: **INTEGRATION.md → "Social engine connection"**.
 
 ---
 
@@ -171,6 +173,7 @@ Optionally later: add a page or redirect at `raahi.io/now` on the main site that
 |---|---|
 | `DATABASE_URL` | Neon Postgres connection string. On Vercel, adding the **Neon integration** to the project sets this automatically. When unset locally, the app uses the `data/dev-db.json` fallback store — fine for development, never for production. |
 | `PAYMENTS_PROVIDER` | Payment provider name from `lib/payments.js`. Default `demo`. A real provider's keys (see Payments above) are read by its provider file when one is added. |
+| `SOCIAL_ENGINE_TOKEN` | Shared secret for the social engine drain endpoints (`GET /api/outbox`, `POST /api/outbox-update`), sent as the `x-social-token` header. Set the same value in Vercel and on the Mac-mini social-pilot. When unset, both endpoints return 401 for everyone. See INTEGRATION.md → "Social engine connection". |
 | `PORT` | Local server port (default 3000). Ignored on Vercel. |
 
 Auth needs no keys: password hashing and sessions are implemented with Node's built-in crypto (`lib/auth.js`).

@@ -166,7 +166,7 @@ function renderWalletAddress() {
   const addr = state.user && state.user.walletAddress;
   line.textContent = addr
     ? `Wallet connected: ${truncateAddress(addr)}. When you pay with crypto, we'll note this address (preview only).`
-    : 'No wallet connected yet. Connect one if you\'d like to pay with Ninjji, ETH, or USDC. Any wallet is welcome.';
+    : 'No wallet connected yet. Connect one if you\'d like to pay with Ninjji, JellyJelly, Wobbles, SOL, or USDC. Any wallet is welcome.';
   const input = $('#walletAddressInput');
   if (input && addr && !input.value) input.value = addr;
 }
