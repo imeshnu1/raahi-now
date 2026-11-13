@@ -14,7 +14,10 @@
     <span class="brand-name">RAAHI <span class="accent-text">NOW</span></span>
     <span class="brand-domain">now.raahi.io</span>
   </div>
-  <div class="wallet-pill" id="walletPill">Credits: <strong id="creditCount">…</strong></div>
+  <div class="header-right">
+    <span id="userArea"><button class="topbtn" id="loginBtn">Log in</button> <button class="topbtn accent-btn" id="signupBtn">Create account</button></span>
+    <div class="wallet-pill" id="walletPill" hidden>Credits: <strong id="creditCount">…</strong></div>
+  </div>
 </header>
 
 <div class="demo-banner">DEMO — prototype payments only. No real money moves. Example Drops are illustrative formats, not live listings.</div>
@@ -65,6 +68,20 @@
   <section id="tab-wallet" class="tab">
     <h1>Wallet</h1>
     <p class="lede">Open payments, by design. Ninjji is native and preferred, and nothing is locked to it: pay with other crypto, card, or local fiat.</p>
+    <div class="card">
+      <h2>Crypto wallet</h2>
+      <p id="walletAddressLine" class="meta">No wallet connected. Connect one to pay with Ninjji, ETH or USDC. Any wallet works — no lock-in.</p>
+      <div class="row">
+        <button type="button" class="accent" id="connectWalletBtn">Connect wallet</button>
+      </div>
+      <form id="walletAddressForm">
+        <label>Or paste a wallet address manually
+          <input id="walletAddressInput" type="text" placeholder="0x… or your Ninjji / BTC address" autocomplete="off">
+        </label>
+        <button type="submit" class="ghost">Save wallet address</button>
+        <p class="msg" id="walletAddressMsg"></p>
+      </form>
+    </div>
     <div class="card">
       <p class="big-balance"><strong id="walletBalance">…</strong> demo credits</p>
       <p class="muted">1 credit = $1 display value. Shown also in JPY and LKR per market.</p>

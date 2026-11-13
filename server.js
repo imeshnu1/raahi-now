@@ -23,6 +23,11 @@ const API_ROUTES = {
   '/api/bookings': 'bookings',
   '/api/wallet': 'wallet',
   '/api/topup': 'topup',
+  '/api/signup': 'signup',
+  '/api/login': 'login',
+  '/api/logout': 'logout',
+  '/api/me': 'me',
+  '/api/wallet-address': 'wallet-address',
 };
 
 const TYPES = {

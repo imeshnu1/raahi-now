@@ -44,21 +44,36 @@ raahi-now-app/
 │   ├── unlock.js     POST /api/unlock    { dropId, method }
 │   ├── asks.js       GET/POST /api/asks
 │   ├── answer.js     POST /api/answer    { askId, localId, text }
-│   ├── bookings.js   GET/POST /api/bookings
-│   ├── wallet.js     GET  /api/wallet
-│   └── topup.js      POST /api/topup     { amount, method }
+│   ├── bookings.js   GET/POST /api/bookings     (login required)
+│   ├── wallet.js     GET  /api/wallet           (login required)
+│   ├── topup.js      POST /api/topup     { amount, method }  (login required)
+│   ├── signup.js     POST /api/signup    { name, email, password }
+│   ├── login.js      POST /api/login     { email, password }
+│   ├── logout.js     POST /api/logout
+│   ├── me.js         GET  /api/me
+│   └── wallet-address.js  POST /api/wallet-address { address }  (login required)
 ├── lib/
 │   ├── api.js        # All API handlers — shared by server.js and /api functions
-│   └── store.js      # Data layer: in-memory store seeded from data/seed.json
+│   ├── store.js      # Data layer: Neon Postgres, or local JSON file fallback
+│   ├── auth.js       # Accounts: scrypt password hashing + cookie sessions
+│   └── payments.js   # Payment provider abstraction (demo provider built in)
 ├── data/
-│   └── seed.json     # Markets, locals, Drops, payment methods, pricing config
+│   ├── seed.json     # Markets, locals, Drops, payment methods, pricing config
+│   └── dev-db.json   # Local dev fallback store (created at runtime, gitignored)
 ├── vercel.json       # Vercel config (serverless function settings)
 └── package.json
 ```
 
 **Expansion by design:** markets are data, not pages. The hierarchy is country → city/region → local → Drop, all defined in `data/seed.json`. Adding a new country or city = adding rows there (with its currency, language, timezone, and phase), not writing new code.
 
-**Data layer:** `lib/store.js` keeps state in memory (per server instance on Vercel, per process locally) and is the only file that touches raw state. To go production, replace its internals with a real database — the API handlers and frontend do not change.
+**Data layer:** `lib/store.js` is the only file that touches raw state, with two backends behind one async interface:
+
+- **Neon Postgres (production):** when `DATABASE_URL` is set, the `@neondatabase/serverless` driver (HTTPS, built for Vercel serverless) is used. Tables are created on first use with idempotent DDL: `users` (incl. `wallet_address`), `sessions`, `wallets`, `unlocks`, `asks`, `answers`, `bookings`, `payments`, and `drop_counters` (unlock counts **and** each Drop's persisted `expires_at` window — seeded once, never reset on cold start; QA B3).
+- **Local JSON fallback (development):** when `DATABASE_URL` is not set, state lives in `data/dev-db.json` (gitignored) with the same interface, so the app runs and tests fully locally with nothing provisioned.
+
+Markets, locals, Drops content and payment methods stay as seed data in `data/seed.json` — content, not user state.
+
+**Accounts & the login gate:** real accounts live in `lib/auth.js` — passwords hashed with `crypto.scrypt` + per-user salt (never stored or logged in plaintext), sessions are random tokens stored **hashed** in the `sessions` table and sent as an HttpOnly cookie (`rn_session`, 30 days). Browsing Drops/Asks is public; **unlock, Ask posting/answering, bookings, wallet and top-up require login (401 otherwise)**. Wallets are per-user; a new account starts with 12 demo credits. A user's connected crypto wallet address is saved on their account (`users.wallet_address`, set via `POST /api/wallet-address`) from the Connect Wallet flow (injected EVM wallet such as MetaMask, or a pasted address — no wallet lock-in).
 
 **Privacy rule built in:** a locked Drop's API response returns `exactPlace: null` and `meetDetail: null`. The exact location only exists in a response after that user unlocks the Drop.
 
@@ -79,6 +94,8 @@ Payment method selection is currency-agnostic and defined in `seed.json`:
 - **Fiat** — USD, JPY, LKR (per market; each market config carries its currency)
 
 No currency is exclusive. Locals choose their own payout currency (each local record carries `payoutCurrency`). Pricing config lives in one place in `seed.json`: Ask = 5 credits, unlocks = 1–3 credits per Drop, locals keep 80% / Raahi 20%.
+
+**Provider abstraction:** every charge goes through `lib/payments.js` — handlers call `getProvider().createCharge(...)`, never a processor directly. The built-in provider is the **demo** provider (records marked demo, no real money). To connect a real crypto processor later: write one provider file implementing `createCharge` / `getStatus`, register it in `lib/payments.js`, and set env `PAYMENTS_PROVIDER` plus that processor's keys (e.g. `NINJJI_API_KEY`, `COINBASE_COMMERCE_API_KEY`, `BTCPAY_URL` / `BTCPAY_API_KEY`) — configuration + one file, not a rewrite. Paying with a crypto method while a wallet is connected records the wallet address on the payment record.
 
 ---
 
@@ -101,7 +118,7 @@ git push -u origin main
 ```
 
 2. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import the `raahi-now` repo.
-3. Framework preset: **Other**. Build command: leave empty. Output directory: leave default (project root). No environment variables are needed (see below).
+3. Framework preset: **Other**. Build command: leave empty. Output directory: leave default (project root). Add the **Neon** integration (Storage tab) so `DATABASE_URL` is set — accounts need it (see Environment variables).
 4. Click **Deploy**. Vercel serves the `public/` folder (`index.html` / `styles.css` / `main.js`) as static files and each file in `api/` as a serverless function.
 5. Open the generated `*.vercel.app` URL and test: Drops load, unlock works, wallet top-up works.
 
@@ -134,23 +151,20 @@ Optionally later: add a page or redirect at `raahi.io/now` on the main site that
 
 ## Environment variables
 
-**None required for the demo.** The app runs with zero configuration.
-
-Optional:
-
 | Variable | Used for |
 |---|---|
+| `DATABASE_URL` | Neon Postgres connection string. On Vercel, adding the **Neon integration** to the project sets this automatically. When unset locally, the app uses the `data/dev-db.json` fallback store — fine for development, never for production. |
+| `PAYMENTS_PROVIDER` | Payment provider name from `lib/payments.js`. Default `demo`. A real provider's keys (see Payments above) are read by its provider file when one is added. |
 | `PORT` | Local server port (default 3000). Ignored on Vercel. |
 
-Future production variables (not yet used by this code): a database URL, an auth provider's keys, and payment provider keys for Ninjji / card / crypto processors.
+Auth needs no keys: password hashing and sessions are implemented with Node's built-in crypto (`lib/auth.js`).
 
 ---
 
 ## What is NOT production yet — honestly
 
-- **Real payments:** all payments are demo records. No Ninjji, card, or crypto processor is integrated, and no keys are read. Real checkout is a separate build once the open-payments model is wired to providers.
-- **Real auth:** there is one implicit "demo traveller" and one demo wallet. No sign-up, login, or per-user accounts yet — so unlocks and wallet state are shared per server instance in this demo.
-- **Persistent database:** state is in memory. On Vercel it resets when an instance cold-starts and is not shared across instances. Replace `lib/store.js` with a real database (Postgres/Supabase) before public launch.
+- **Real payments:** all payments are still demo records via the demo provider in `lib/payments.js`. No Ninjji, card, or crypto processor moves real money yet — the integration point (provider interface + `PAYMENTS_PROVIDER` + processor keys) is built and documented, and the Connect Wallet flow saves users' wallet addresses, but real on-chain/card settlement is the next step.
+- **Database on Vercel:** accounts, sessions, wallets, unlocks, Asks, bookings, payments and Drop windows are persistent in Neon **once `DATABASE_URL` is set on the project** (via the Neon integration). Until then the live deployment would use the local-file fallback, which does not persist across serverless instances — connect Neon before relying on accounts in production. The Neon path is verified locally for module load/query behavior; the live end-to-end check happens right after the integration is connected on Vercel.
 - **Country gates:** Japan (Kyoto) and Sri Lanka (Sigiriya) are in the data model marked `phase: "expansion"`. Their paid launch still needs each country's laws, payment, and partner pass (Raahi's standing US-first discipline). Do not take real paid unlocks there until that pass is done.
 - **Photos:** starter images are Unsplash placeholders (see Seed data above), not locals' real photos.
 - **Production testing:** the app was tested locally (homepage + every API flow via curl). The Vercel deployment itself, the custom domain, and real-device browsing are untested until the deploy steps above are run with the user.

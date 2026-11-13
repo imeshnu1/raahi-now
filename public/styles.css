@@ -63,6 +63,13 @@ input,select,textarea{font:inherit;padding:10px;border:1.5px solid var(--gray);b
 .answer-form select,.answer-form input{flex:1;min-width:140px}
 .modal-backdrop{position:fixed;inset:0;background:rgba(26,26,26,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
 .modal-backdrop[hidden]{display:none}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.topbtn{background:var(--white);color:var(--ink);border:2px solid var(--white);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:700;cursor:pointer}
+.topbtn.accent-btn{background:var(--accent);border-color:var(--accent)}
+.user-chip{color:var(--white);font-size:14px;font-weight:600}
+.auth-tabs{display:flex;gap:8px;margin-bottom:14px}
+.auth-tabs button{flex:1}
+.auth-error{color:var(--ink);background:var(--cream);border:1.5px solid var(--accent);border-radius:10px;padding:8px 12px;font-size:14px}
 .modal{background:var(--white);border-radius:16px;max-width:480px;width:100%;padding:20px;max-height:90vh;overflow:auto}
 .modal h3{margin-top:0}
 .modal form{display:flex;flex-direction:column;gap:12px}

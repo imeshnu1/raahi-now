@@ -2,15 +2,94 @@
 // All payments are DEMO — methods are selected, recorded, and shown, but no
 // real money moves.
 
-const state = { markets: [], methods: [], market: 'all', drops: [], asks: [], bookings: [], wallet: null, localsByMarket: {} };
+const state = { markets: [], methods: [], market: 'all', drops: [], asks: [], bookings: [], wallet: null, localsByMarket: {}, user: null };
+let pendingAction = null;
 
 const $ = (s) => document.querySelector(s);
 
 async function api(path, opts) {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) { const e = new Error(data.error || 'Request failed'); e.status = res.status; e.code = data.code; throw e; }
   return data;
+}
+
+// ---------- Auth ----------
+function renderHeader() {
+  const area = $('#userArea');
+  if (state.user) {
+    const first = (state.user.name || '').split(' ')[0];
+    area.innerHTML = `<span class="user-chip">Hi, ${esc(first)}</span> <button class="topbtn" id="logoutBtn">Log out</button>`;
+    $('#logoutBtn').addEventListener('click', logout);
+    $('#walletPill').hidden = false;
+  } else {
+    area.innerHTML = '<button class="topbtn" id="loginBtn">Log in</button> <button class="topbtn accent-btn" id="signupBtn">Create account</button>';
+    $('#loginBtn').addEventListener('click', () => openAuth('login'));
+    $('#signupBtn').addEventListener('click', () => openAuth('signup'));
+    $('#walletPill').hidden = true;
+  }
+  renderWalletAddress();
+}
+
+async function logout() {
+  try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch { /* ignore */ }
+  state.user = null; state.wallet = null;
+  renderHeader(); renderWallet();
+  loadDrops(); loadBookings();
+}
+
+function requireAuth(action) {
+  if (state.user) { action(); return; }
+  pendingAction = action;
+  openAuth('signup');
+}
+
+function openAuth(mode) {
+  openModal(`
+    <h3>${mode === 'signup' ? 'Create your Raahi account' : 'Welcome back'}</h3>
+    <p class="meta">One Raahi login for Drops, Asks, bookings and your wallet. Browsing stays free — you only need an account to unlock, ask, book or pay (demo).</p>
+    <div class="auth-tabs">
+      <button type="button" class="${mode === 'signup' ? 'accent' : 'ghost'}" id="tabSignup">Create account</button>
+      <button type="button" class="${mode === 'login' ? 'accent' : 'ghost'}" id="tabLogin">Log in</button>
+    </div>
+    <form id="authForm">
+      ${mode === 'signup' ? '<label>Your name <input name="name" required autocomplete="name" placeholder="Your name"></label>' : ''}
+      <label>Email <input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <label>Password <input name="password" type="password" required autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" placeholder="At least 8 characters"></label>
+      <p class="auth-error" id="authError" hidden></p>
+      <button class="accent" type="submit">${mode === 'signup' ? 'Create account' : 'Log in'}</button>
+      <button class="ghost" type="button" id="cancelBtn">Cancel</button>
+    </form>`);
+  $('#tabSignup').addEventListener('click', () => openAuth('signup'));
+  $('#tabLogin').addEventListener('click', () => openAuth('login'));
+  $('#cancelBtn').addEventListener('click', () => { pendingAction = null; closeModal(); });
+  $('#authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const errBox = $('#authError');
+    try {
+      const r = mode === 'signup'
+        ? await api('/api/signup', { method: 'POST', body: JSON.stringify({ name: fd.get('name'), email: fd.get('email'), password: fd.get('password') }) })
+        : await api('/api/login', { method: 'POST', body: JSON.stringify({ email: fd.get('email'), password: fd.get('password') }) });
+      state.user = r.user; state.wallet = r.wallet;
+      renderHeader(); renderWallet(); fillMethodSelects();
+      closeModal();
+      loadDrops(); loadBookings();
+      const act = pendingAction; pendingAction = null;
+      if (act) act();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.hidden = false;
+    }
+  });
+}
+
+async function loadMe() {
+  try {
+    const { user } = await api('/api/me');
+    state.user = user;
+  } catch { state.user = null; }
+  renderHeader();
 }
 
 function esc(t) {
@@ -28,25 +107,97 @@ function fillMethodSelects() {
   const html = state.methods.map((m) =>
     `<option value="${m.id}"${m.preferred ? ' selected' : ''}>${esc(m.label)}${m.note ? ' — ' + esc(m.note) : ''}</option>`).join('');
   document.querySelectorAll('.method-select').forEach((sel) => { sel.innerHTML = html; });
+  // QA B8: you cannot buy credits with credits — the top-up select never
+  // offers 'credits' (unlocks/Asks keep the full open method list).
+  const topupSel = $('#topupMethod');
+  if (topupSel) {
+    topupSel.innerHTML = state.methods.filter((m) => m.id !== 'credits').map((m) =>
+      `<option value="${m.id}"${m.preferred ? ' selected' : ''}>${esc(m.label)}${m.note ? ' — ' + esc(m.note) : ''}</option>`).join('');
+  }
 }
 
 function renderWallet() {
-  if (!state.wallet) return;
+  const list = $('#paymentsList');
+  if (!state.wallet) {
+    $('#walletBalance').textContent = '–';
+    list.innerHTML = state.user
+      ? '<p class="muted">No demo payments yet.</p>'
+      : '<p class="muted">Log in or create an account to see your wallet.</p>';
+    return;
+  }
   $('#creditCount').textContent = state.wallet.creditsBalance;
   $('#walletBalance').textContent = state.wallet.creditsBalance;
-  const list = $('#paymentsList');
   if (!state.wallet.payments.length) { list.innerHTML = '<p class="muted">No demo payments yet.</p>'; return; }
   list.innerHTML = state.wallet.payments.map((p) =>
     `<div class="list-item"><strong>${esc(p.kind)}</strong> · ${esc(p.method)} · ${p.credits} credits · DEMO<br>
-     <span class="meta">${esc(p.detail)} · ${new Date(p.createdAt).toLocaleString()}</span></div>`).join('');
+     <span class="meta">${esc(p.detail)}${p.walletAddress ? ' · wallet ' + esc(truncateAddress(p.walletAddress)) : ''} · ${new Date(p.createdAt).toLocaleString()}</span></div>`).join('');
 }
 
 async function loadWallet() {
-  const { wallet } = await api('/api/wallet');
-  state.wallet = wallet;
-  state.methods = wallet.paymentMethods;
+  if (!state.user) { state.wallet = null; renderWallet(); return; }
+  try {
+    const { wallet } = await api('/api/wallet');
+    state.wallet = wallet;
+    state.methods = wallet.paymentMethods;
+  } catch { state.wallet = null; }
   renderWallet();
   fillMethodSelects();
+}
+
+async function loadMethods() {
+  try {
+    const data = await api('/api/markets');
+    state.methods = data.paymentMethods || [];
+    state.markets = data.markets || state.markets;
+  } catch { /* selects fill again after login */ }
+  fillMethodSelects();
+}
+
+// ---------- Crypto wallet connect ----------
+function truncateAddress(a) {
+  const s = String(a || '');
+  return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
+}
+
+function renderWalletAddress() {
+  const line = $('#walletAddressLine');
+  if (!line) return;
+  const addr = state.user && state.user.walletAddress;
+  line.textContent = addr
+    ? `Wallet connected: ${truncateAddress(addr)} — crypto payments (demo) will record this address.`
+    : 'No wallet connected. Connect one to pay with Ninjji, ETH or USDC. Any wallet works — no lock-in.';
+  const input = $('#walletAddressInput');
+  if (input && addr && !input.value) input.value = addr;
+}
+
+async function saveWalletAddress(address) {
+  const r = await api('/api/wallet-address', { method: 'POST', body: JSON.stringify({ address }) });
+  state.user = r.user;
+  renderWalletAddress();
+  return r;
+}
+
+async function connectWallet() {
+  const msg = $('#walletAddressMsg');
+  const doConnect = async () => {
+    if (window.ethereum && typeof window.ethereum.request === 'function') {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const address = accounts && accounts[0];
+        if (!address) { msg.textContent = 'No account was shared by the wallet.'; return; }
+        await saveWalletAddress(address);
+        msg.textContent = `Wallet connected and saved: ${truncateAddress(address)}`;
+      } catch (err) {
+        msg.textContent = 'Wallet connection was cancelled or failed. You can paste an address manually instead.';
+      }
+    } else {
+      msg.textContent = 'No browser wallet found (for example MetaMask). No problem — paste any wallet address below and save it. Any wallet works.';
+      const input = $('#walletAddressInput');
+      if (input) input.focus();
+    }
+  };
+  if (!state.user) { pendingAction = () => { document.querySelector('[data-tab="wallet"]').click(); doConnect(); }; openAuth('signup'); return; }
+  await doConnect();
 }
 
 function marketName(id) {
@@ -101,14 +252,15 @@ async function loadDrops() {
   $('#dropsGrid').innerHTML = state.drops.length
     ? state.drops.map(dropCard).join('')
     : '<p class="muted">No Drops in this market right now.</p>';
-  document.querySelectorAll('[data-unlock]').forEach((b) => b.addEventListener('click', () => openUnlock(b.dataset.unlock)));
-  document.querySelectorAll('[data-book]').forEach((b) => b.addEventListener('click', () => openBook(b.dataset.book, b.dataset.drop)));
+  document.querySelectorAll('[data-unlock]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openUnlock(b.dataset.unlock))));
+  document.querySelectorAll('[data-book]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openBook(b.dataset.book, b.dataset.drop))));
 }
 
 async function loadBookings() {
+  const el = $('#bookingsList');
+  if (!state.user) { state.bookings = []; el.innerHTML = '<p class="muted">Log in to see your bookings. Unlock a Drop and book the person behind it.</p>'; return; }
   const { bookings } = await api('/api/bookings');
   state.bookings = bookings;
-  const el = $('#bookingsList');
   if (!bookings.length) { el.innerHTML = '<p class="muted">No bookings yet. Unlock a Drop and book the person behind it.</p>'; return; }
   el.innerHTML = bookings.map((b) =>
     `<div class="list-item"><strong>${esc(b.local ? b.local.name : b.localId)}</strong> · ${esc(b.when)} · ${b.people} people<br>
@@ -134,6 +286,7 @@ async function loadAsks() {
     </div>`).join('');
   document.querySelectorAll('[data-answer]').forEach((f) => f.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!state.user) { requireAuth(() => f.requestSubmit()); return; }
     const fd = new FormData(f);
     try {
       await api('/api/answer', { method: 'POST', body: JSON.stringify({ askId: f.dataset.answer, localId: fd.get('localId'), text: fd.get('text') }) });
@@ -168,6 +321,9 @@ function openUnlock(dropId) {
     <h3>Unlock this Drop</h3>
     <p>${esc(d.title)}</p>
     <p class="meta">Costs ${d.priceCredits} demo credits. The local keeps 80%, Raahi keeps 20%. No real money moves.</p>
+    <p class="meta">${state.user && state.user.walletAddress
+      ? `Crypto wallet connected: ${esc(truncateAddress(state.user.walletAddress))} — crypto payments (demo) record this address.`
+      : 'No crypto wallet connected. You can still pay (demo), or connect a wallet in the Wallet tab first.'}</p>
     <form id="unlockForm">
       <label>Pay with (demo, open payments)<select name="method">${methodOptions()}</select></label>
       <button class="accent" type="submit">Unlock · ${d.priceCredits} credits</button>
@@ -215,6 +371,7 @@ function openBook(localId, dropId) {
 // ---------- Forms & tabs ----------
 $('#askForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!state.user) { requireAuth(() => $('#askForm').requestSubmit()); return; }
   const msg = $('#askMsg');
   try {
     const r = await api('/api/asks', { method: 'POST', body: JSON.stringify({
@@ -228,11 +385,26 @@ $('#askForm').addEventListener('submit', async (e) => {
 
 $('#topupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!state.user) { requireAuth(() => $('#topupForm').requestSubmit()); return; }
   const msg = $('#topupMsg');
   try {
     const r = await api('/api/topup', { method: 'POST', body: JSON.stringify({ amount: Number($('#topupAmount').value), method: $('#topupMethod').value }) });
     state.wallet = r.wallet; renderWallet();
     msg.textContent = r.message;
+  } catch (err) { msg.textContent = err.message; }
+});
+
+$('#connectWalletBtn').addEventListener('click', connectWallet);
+
+$('#walletAddressForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#walletAddressMsg');
+  const address = $('#walletAddressInput').value.trim();
+  if (!address) { msg.textContent = 'Paste a wallet address first.'; return; }
+  if (!state.user) { requireAuth(async () => { try { await saveWalletAddress(address); msg.textContent = 'Wallet address saved to your account.'; } catch (err) { msg.textContent = err.message; } }); return; }
+  try {
+    await saveWalletAddress(address);
+    msg.textContent = 'Wallet address saved to your account.';
   } catch (err) { msg.textContent = err.message; }
 });
 
@@ -248,10 +420,13 @@ setInterval(() => {
 
 (async () => {
   try {
+    await loadMe();
+    await loadMethods();
     await loadWallet();
     await loadDrops();
     await loadAsks();
     await loadBookings();
+    renderWalletAddress();
   } catch (err) {
     $('#dropsGrid').innerHTML = `<p class="muted">Could not load: ${esc(err.message)}</p>`;
   }
