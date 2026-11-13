@@ -1,77 +1,125 @@
-/* Raahi NOW — palette ONLY:
-   #1A1A1A near-black, #FFFFFF white, #E8926A terracotta accent,
-   #F4EFEA warm cream, #6B6B6B gray. No other colors, no gradients. */
+/* Raahi NOW — quiet-luxury editorial restyle (Quince-inspired).
+   Palette ONLY: #1A1A1A near-black (text only, never big filled blocks),
+   #FFFFFF white, #E8926A terracotta (sparing accents only),
+   #F4EFEA warm cream, #6B6B6B gray.
+   Hairlines/shadows are rgba derivatives of #1A1A1A. No gradients.
+   Type: Cormorant Garamond (display serif) + Jost (geometric sans). */
 :root{
   --ink:#1A1A1A;
   --white:#FFFFFF;
   --accent:#E8926A;
   --cream:#F4EFEA;
   --gray:#6B6B6B;
+  --hairline:rgba(26,26,26,.08);
+  --hairline-strong:rgba(26,26,26,.18);
+  --shadow-soft:0 1px 2px rgba(26,26,26,.04),0 8px 24px rgba(26,26,26,.05);
+  --shadow-modal:0 24px 64px rgba(26,26,26,.18);
+  --serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --sans:"Jost",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--cream);color:var(--ink)}
-a{color:var(--ink)}
-.topbar{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:var(--white);padding:12px 18px;position:sticky;top:0;z-index:5}
-.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.brand-mark{background:var(--accent);color:var(--ink);font-weight:800;border-radius:8px;padding:2px 9px;font-size:20px}
-.brand-name{font-weight:800;letter-spacing:2px;font-size:18px}
+body{margin:0;font-family:var(--sans);font-weight:300;font-size:16px;line-height:1.6;background:var(--cream);color:var(--ink);-webkit-font-smoothing:antialiased}
+a{color:var(--ink);text-underline-offset:3px}
+strong,b{font-weight:500}
+
+/* ---------- Header: white, hairline rule, no black bar ---------- */
+.topbar{display:flex;justify-content:space-between;align-items:center;background:var(--white);color:var(--ink);padding:18px 28px;border-bottom:1px solid var(--hairline);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand-mark{font-family:var(--serif);font-weight:500;font-size:30px;line-height:1;color:var(--ink);background:none;padding:0;border-radius:0}
+.brand-name{font-family:var(--serif);font-weight:500;letter-spacing:.22em;font-size:20px}
 .accent-text{color:var(--accent)}
-.brand-domain{color:var(--white);opacity:.75;font-size:13px}
-.wallet-pill{background:var(--accent);color:var(--ink);border-radius:999px;padding:6px 14px;font-size:14px}
-.demo-banner{background:var(--accent);color:var(--ink);text-align:center;font-weight:700;font-size:13px;padding:8px 12px}
-.tabs{display:flex;gap:8px;padding:12px 18px 0;flex-wrap:wrap}
-.tabs button{background:var(--white);border:2px solid var(--ink);color:var(--ink);border-radius:999px;padding:8px 18px;font-size:15px;cursor:pointer}
-.tabs button.active{background:var(--ink);color:var(--white)}
-main{max-width:1060px;margin:0 auto;padding:18px}
+.brand-domain{color:var(--gray);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.topbtn{background:transparent;color:var(--ink);border:1px solid var(--hairline-strong);border-radius:2px;padding:9px 18px;font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.topbtn.accent-btn{background:var(--ink);border-color:var(--ink);color:var(--white)}
+.user-chip{color:var(--gray);font-size:13px;font-weight:400;letter-spacing:.04em}
+.wallet-pill{background:var(--white);color:var(--ink);border:1px solid var(--hairline-strong);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
+.wallet-pill strong{font-weight:500}
+
+/* ---------- Demo banner: quiet cream strip ---------- */
+.demo-banner{background:var(--cream);color:var(--gray);text-align:center;font-weight:400;font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:10px 16px;border-bottom:1px solid var(--hairline)}
+
+/* ---------- Tabs: understated text nav, terracotta underline ---------- */
+.tabs{display:flex;gap:34px;flex-wrap:wrap;background:var(--white);border-bottom:1px solid var(--hairline);padding:0 28px;max-width:none}
+.tabs button{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--gray);padding:16px 2px 14px;font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+.tabs button.active{background:none;color:var(--ink);border-bottom-color:var(--accent)}
+
+/* ---------- Layout & type ---------- */
+main{max-width:1200px;margin:0 auto;padding:52px 28px 72px}
 .tab{display:none}
 .tab.active{display:block}
-h1{font-size:28px;margin:8px 0}
-h2{font-size:20px;margin:26px 0 10px}
-.lede{color:var(--gray);font-size:16px;max-width:640px}
+h1{font-family:var(--serif);font-weight:400;font-size:42px;line-height:1.15;letter-spacing:.01em;margin:6px 0 14px}
+h2{font-family:var(--serif);font-weight:400;font-size:28px;line-height:1.2;margin:40px 0 14px}
+.lede{color:var(--gray);font-size:17px;font-weight:300;line-height:1.65;max-width:680px;margin:0 0 8px}
 .muted{color:var(--gray)}
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
-.chips button{background:var(--white);border:1.5px solid var(--gray);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
-.chips button.active{border-color:var(--ink);background:var(--ink);color:var(--white)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
-.card,.drop{background:var(--white);border:1px solid var(--gray);border-radius:14px;padding:16px}
+.meta{font-size:13px;font-weight:400;color:var(--gray)}
+
+/* ---------- Market chips: light pills, terracotta underline when active ---------- */
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 30px}
+.chips button{background:var(--white);border:1px solid var(--hairline-strong);color:var(--ink);border-radius:999px;padding:7px 16px;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:400;letter-spacing:.03em}
+.chips button.active{border-color:var(--ink);color:var(--ink);background:var(--white);box-shadow:inset 0 -2px 0 var(--accent)}
+
+/* ---------- Cards & Drops: white on cream, hairline, whisper shadow ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:30px}
+.card,.drop{background:var(--white);border:1px solid var(--hairline);border-radius:4px;box-shadow:var(--shadow-soft)}
+.card{padding:28px}
 .drop{padding:0;overflow:hidden;display:flex;flex-direction:column}
-.drop img{width:100%;height:180px;object-fit:cover;display:block;background:var(--cream)}
-.drop-body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
-.drop h3{margin:0;font-size:18px;line-height:1.3}
-.badges{display:flex;gap:6px;flex-wrap:wrap}
-.badge{font-size:11px;font-weight:700;letter-spacing:.5px;border:1.5px solid var(--ink);border-radius:999px;padding:2px 8px;text-transform:uppercase}
-.badge.live{background:var(--accent);color:var(--ink);border-color:var(--ink)}
-.badge.closed{color:var(--gray);border-color:var(--gray)}
-.badge.soft{border-color:var(--gray);color:var(--gray)}
-.meta{font-size:13px;color:var(--gray)}
+.drop img{width:100%;height:220px;object-fit:cover;display:block;background:var(--cream)}
+.drop-body{padding:22px 24px 24px;display:flex;flex-direction:column;gap:10px;flex:1}
+.drop-body p{margin:0}
+.drop h3{font-family:var(--serif);font-weight:500;font-size:23px;line-height:1.25;margin:2px 0 0}
+.badges{display:flex;gap:8px;flex-wrap:wrap}
+.badge{font-size:10px;font-weight:500;letter-spacing:.12em;border:1px solid var(--hairline);border-radius:999px;padding:3px 10px;text-transform:uppercase;color:var(--gray);background:var(--white)}
+.badge.live{background:var(--cream);color:var(--ink);border-color:var(--hairline)}
+.badge.closed{color:var(--gray);border-color:var(--hairline)}
+.badge.soft{border-color:var(--hairline);color:var(--gray)}
 .local-line{font-size:14px}
-.local-line strong{font-size:15px}
-button.accent,.drop button,.card button{background:var(--accent);color:var(--ink);border:2px solid var(--ink);border-radius:10px;padding:10px 16px;font-size:15px;font-weight:700;cursor:pointer}
-button.ghost{background:var(--white);color:var(--ink);border:1.5px solid var(--gray);border-radius:10px;padding:9px 14px;font-size:14px;cursor:pointer}
-button:disabled{opacity:.45;cursor:not-allowed}
-.exact{background:var(--cream);border:1.5px dashed var(--ink);border-radius:10px;padding:10px 12px;font-size:14px}
-form.card{display:flex;flex-direction:column;gap:12px;max-width:640px}
-label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
-input,select,textarea{font:inherit;padding:10px;border:1.5px solid var(--gray);border-radius:10px;background:var(--white);color:var(--ink)}
-.row{display:flex;gap:12px;flex-wrap:wrap}
+.local-line strong{font-size:15px;font-weight:500}
+.exact{background:var(--cream);border:1px solid var(--hairline);border-radius:4px;padding:14px 16px;font-size:14px}
+
+/* ---------- Buttons: slim ink primary, hairline ghost ---------- */
+button{font-family:var(--sans)}
+button.accent,.drop button.accent,.card button.accent{background:var(--ink);color:var(--white);border:1px solid var(--ink);border-radius:2px;padding:12px 24px;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+button.ghost{background:var(--white);color:var(--ink);border:1px solid var(--hairline-strong);border-radius:2px;padding:11px 20px;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- Forms ---------- */
+form.card{display:flex;flex-direction:column;gap:16px;max-width:680px}
+label{display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--gray)}
+input,select,textarea{font:inherit;font-size:15px;font-weight:400;letter-spacing:normal;text-transform:none;padding:11px 12px;border:1px solid var(--hairline-strong);border-radius:2px;background:var(--white);color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink)}
+.row{display:flex;gap:16px;flex-wrap:wrap}
 .row label{flex:1;min-width:160px}
-.msg{font-size:14px;min-height:18px}
-.big-balance{font-size:22px}
-.list-item{background:var(--white);border:1px solid var(--gray);border-radius:12px;padding:12px 14px;margin-bottom:10px}
-.answer{border-left:4px solid var(--accent);padding:6px 10px;margin-top:8px;background:var(--cream);border-radius:0 8px 8px 0}
-.answer-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.msg{font-size:14px;min-height:18px;margin:0}
+.big-balance{font-size:18px;margin:0 0 6px}
+.big-balance strong{font-family:var(--serif);font-weight:500;font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
+
+/* ---------- Lists & answers ---------- */
+.list-item{background:var(--white);border:1px solid var(--hairline);border-radius:4px;box-shadow:var(--shadow-soft);padding:20px 22px;margin-bottom:14px}
+.answer{border-left:2px solid var(--accent);padding:8px 14px;margin-top:10px;background:var(--cream);border-radius:0 4px 4px 0}
+.answer-form{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .answer-form select,.answer-form input{flex:1;min-width:140px}
-.modal-backdrop{position:fixed;inset:0;background:rgba(26,26,26,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+
+/* ---------- Modal: white, hairline, soft depth ---------- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(26,26,26,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
 .modal-backdrop[hidden]{display:none}
-.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.topbtn{background:var(--white);color:var(--ink);border:2px solid var(--white);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:700;cursor:pointer}
-.topbtn.accent-btn{background:var(--accent);border-color:var(--accent)}
-.user-chip{color:var(--white);font-size:14px;font-weight:600}
-.auth-tabs{display:flex;gap:8px;margin-bottom:14px}
+.modal{background:var(--white);border:1px solid var(--hairline);border-radius:4px;box-shadow:var(--shadow-modal);max-width:480px;width:100%;padding:32px;max-height:90vh;overflow:auto}
+.modal h3{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.2;margin-top:0}
+.modal form{display:flex;flex-direction:column;gap:14px}
+.auth-tabs{display:flex;gap:10px;margin-bottom:18px}
 .auth-tabs button{flex:1}
-.auth-error{color:var(--ink);background:var(--cream);border:1.5px solid var(--accent);border-radius:10px;padding:8px 12px;font-size:14px}
-.modal{background:var(--white);border-radius:16px;max-width:480px;width:100%;padding:20px;max-height:90vh;overflow:auto}
-.modal h3{margin-top:0}
-.modal form{display:flex;flex-direction:column;gap:12px}
-footer{padding:24px 18px;text-align:center;color:var(--gray);font-size:13px}
-@media (max-width:560px){ h1{font-size:24px} .brand-domain{display:none} }
+.auth-error{color:var(--ink);background:var(--cream);border:1px solid var(--accent);border-radius:4px;padding:10px 14px;font-size:14px}
+
+footer{background:var(--white);border-top:1px solid var(--hairline);padding:36px 24px;text-align:center;color:var(--gray);font-size:12px;letter-spacing:.06em}
+
+@media (max-width:560px){
+  h1{font-size:32px}
+  h2{font-size:24px}
+  .brand-domain{display:none}
+  .topbar{padding:14px 16px}
+  .tabs{gap:22px;padding:0 16px}
+  main{padding:34px 16px 52px}
+  .card{padding:22px}
+  .drop-body{padding:20px}
+  .modal{padding:24px}
+}
