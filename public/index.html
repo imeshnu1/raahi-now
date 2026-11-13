@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Raahi NOW — Real recommendations, from a real person who is there now</title>
-<meta name="description" content="Raahi NOW on now.raahi.io: expiring travel recommendations from verified locals. Unlock a Drop, Ask Izzy, book the person. Demo — no real payments.">
+<title>Raahi NOW — Real tips from real locals, right now</title>
+<meta name="description" content="Raahi NOW on now.raahi.io: honest tips from verified locals that don't last long. Unlock a Drop, Ask Izzy, or book the local behind it. Preview only — no real money moves yet.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
@@ -23,7 +23,7 @@
   </div>
 </header>
 
-<div class="demo-banner">DEMO — prototype payments only. No real money moves. Example Drops are illustrative formats, not live listings.</div>
+<div class="demo-banner">This is a preview — no real money moves yet. The Drops below are examples, so you can see how it all works.</div>
 
 <nav class="tabs" id="tabs">
   <button data-tab="drops" class="active">Drops</button>
@@ -36,32 +36,32 @@
   <!-- DROPS -->
   <section id="tab-drops" class="tab active">
     <h1>Live Drops</h1>
-    <p class="lede">Real recommendations from named locals. They expire, they cap out, and the exact place stays hidden until you unlock it.</p>
+    <p class="lede">Real tips from real locals, by name. Each Drop is only around for a short while, and the exact spot stays hidden until you unlock it.</p>
     <div class="chips" id="marketChips"></div>
     <div class="grid" id="dropsGrid"><p class="muted">Loading Drops…</p></div>
     <h2>Your bookings</h2>
-    <div id="bookingsList"><p class="muted">No bookings yet. Unlock a Drop and book the person behind it.</p></div>
+    <div id="bookingsList"><p class="muted">No bookings yet. Unlock a Drop, and you can book the local behind it.</p></div>
   </section>
 
   <!-- ASK -->
   <section id="tab-ask" class="tab">
     <h1>Ask Izzy</h1>
-    <p class="lede">State the real constraint. Verified locals answer with one recommendation each, not a list of fifty. Asking costs <strong>5 demo credits</strong>.</p>
+    <p class="lede">Tell Izzy what's really going on — your time, your budget, your mood. A verified local will answer with one good idea, not a list of fifty. Asking costs <strong>5 credits</strong>. It's a preview, so no real money moves.</p>
     <form id="askForm" class="card">
       <label>Where are you?
         <select id="askMarket" required></select>
       </label>
-      <label>Your situation
-        <textarea id="askText" rows="3" required placeholder="I am in Kyoto, I have 3 hours this evening, mid budget, love food, no crowds"></textarea>
+      <label>What's your situation?
+        <textarea id="askText" rows="3" required placeholder="I'm in Kyoto with 3 hours this evening. Mid budget, love food, no crowds"></textarea>
       </label>
       <div class="row">
-        <label>Hours you have <input id="askHours" type="text" placeholder="2 hours"></label>
+        <label>How much time do you have? <input id="askHours" type="text" placeholder="2 hours"></label>
         <label>Budget <input id="askBudget" type="text" placeholder="$40"></label>
       </div>
-      <label>Pay with (demo)
+      <label>Pay with
         <select id="askMethod" class="method-select"></select>
       </label>
-      <button type="submit" class="accent">Post Ask · 5 credits</button>
+      <button type="submit" class="accent">Post my Ask · 5 credits</button>
       <p class="msg" id="askMsg"></p>
     </form>
     <div id="asksList"></div>
@@ -70,37 +70,37 @@
   <!-- WALLET -->
   <section id="tab-wallet" class="tab">
     <h1>Wallet</h1>
-    <p class="lede">Open payments, by design. Ninjji is native and preferred, and nothing is locked to it: pay with other crypto, card, or local fiat.</p>
+    <p class="lede">Pay your way. Ninjji is our home currency and the cheapest way to pay, but you're never locked in — other crypto, a card, and local money all work too.</p>
     <div class="card">
       <h2>Crypto wallet</h2>
-      <p id="walletAddressLine" class="meta">No wallet connected. Connect one to pay with Ninjji, ETH or USDC. Any wallet works — no lock-in.</p>
+      <p id="walletAddressLine" class="meta">No wallet connected yet. Connect one if you'd like to pay with Ninjji, ETH, or USDC. Any wallet is welcome.</p>
       <div class="row">
         <button type="button" class="accent" id="connectWalletBtn">Connect wallet</button>
       </div>
       <form id="walletAddressForm">
-        <label>Or paste a wallet address manually
-          <input id="walletAddressInput" type="text" placeholder="0x… or your Ninjji / BTC address" autocomplete="off">
+        <label>Or paste your wallet address
+          <input id="walletAddressInput" type="text" placeholder="0x… or a Ninjji / BTC address" autocomplete="off">
         </label>
         <button type="submit" class="ghost">Save wallet address</button>
         <p class="msg" id="walletAddressMsg"></p>
       </form>
     </div>
     <div class="card">
-      <p class="big-balance"><strong id="walletBalance">…</strong> demo credits</p>
-      <p class="muted">1 credit = $1 display value. Shown also in JPY and LKR per market.</p>
+      <p class="big-balance"><strong id="walletBalance">…</strong> credits</p>
+      <p class="muted">One credit is worth $1. We also show amounts in JPY and LKR, depending on the market. This is a preview, so these credits aren't real money yet.</p>
       <form id="topupForm">
         <div class="row">
           <label>Amount <input id="topupAmount" type="number" min="1" max="1000" value="12" required></label>
-          <label>Pay with (demo)
+          <label>Pay with
             <select id="topupMethod" class="method-select"></select>
           </label>
         </div>
-        <button type="submit" class="accent">Top up (demo)</button>
+        <button type="submit" class="accent">Top up</button>
         <p class="msg" id="topupMsg"></p>
       </form>
     </div>
-    <h2>Demo payments</h2>
-    <div id="paymentsList"><p class="muted">No demo payments yet.</p></div>
+    <h2>Payments so far</h2>
+    <div id="paymentsList"><p class="muted">No payments yet. When you top up or unlock something, it will show up here.</p></div>
   </section>
 
   <!-- PLAN -->
@@ -110,32 +110,32 @@
       <img id="leoImg" alt="Leo, Raahi's barn swallow mascot">
       <div>
         <h2>Meet Leo</h2>
-        <p>Leo is a barn swallow, and Raahi's mascot. Swallows cross continents and always find their way home. That is the spirit of every plan here.</p>
+        <p>Leo is a barn swallow, and Raahi's mascot. Swallows cross continents and always find their way home. That's the spirit behind every plan here.</p>
       </div>
     </div>
     <div class="card">
-      <h2>One domain: now.raahi.io</h2>
-      <p>Raahi NOW lives on a subdomain of raahi.io, the domain Raahi already owns. No new domain, one brand, one login, one wallet. raahi.io stays the main home; now.raahi.io is where live Drops, Asks, unlocks and local storefronts happen.</p>
-      <h2>Anti-viral by design</h2>
+      <h2>One home: now.raahi.io</h2>
+      <p>Raahi NOW lives here, on a corner of raahi.io — the home Raahi already has. One brand, one login, one wallet. raahi.io is the main home. This is where you'll find live Drops, ask Izzy, and book locals.</p>
+      <h2>Made to stay small and honest</h2>
       <ul>
-        <li>No followers, no like counts, no save counts, no leaderboard, no endless scroll.</li>
-        <li>Drops expire at the end of their window. Yesterday's tip is dead.</li>
-        <li>When a Drop hits its daily unlock cap, it pauses for the day. The place protects itself.</li>
-        <li>Every recommendation comes from a named, verified local. No AI recommendations, no anonymous tips.</li>
+        <li>No followers. No like counts. No endless scroll. Just people and places.</li>
+        <li>Drops don't last. When a Drop's time is up, it's gone — yesterday's tip stays yesterday's.</li>
+        <li>Each Drop can only be unlocked a few times a day. When it reaches its limit, it rests — so the place never gets overrun.</li>
+        <li>Every tip comes from a real local, by name, checked by us. Nothing anonymous, and nothing written by AI.</li>
         <li>We do not sell people. We give people a storefront.</li>
       </ul>
       <h2>The money, honestly</h2>
-      <p>Unlocks run $1–$3 equivalent, an Ask costs $5 equivalent. Locals keep <strong>80%</strong>, Raahi keeps <strong>20%</strong>. Locals choose their own payout currency. Payments are currency-agnostic: Ninjji (native, preferred, lowest fees), other crypto, card, and fiat USD / JPY / LKR to start. In this demo, no real money moves.</p>
-      <h2>How it expands</h2>
-      <p>Markets are configuration, not code: country, then city or region, then local, then Drop. NYC, Boston and Ellsworth/Acadia (USA) launch first. Japan (Kyoto) and Sri Lanka (Sigiriya) are built into the data model now and open for paid launch after each country's laws, payment and partner pass. A sixth market later is setup, not a rebuild.</p>
-      <h2>Social is a billboard</h2>
-      <p>Every Drop can be exported as a Raahi-branded card to Instagram, TikTok, YouTube Shorts, Reddit and Facebook. You can watch it anywhere. You can only unlock the exact location, and book the person, on Raahi.</p>
+      <p>Unlocking a Drop costs about $1–$3. Asking Izzy costs $5. Locals keep <strong>80%</strong> of it, Raahi keeps <strong>20%</strong>. Locals choose how they get paid. You can pay with Ninjji (our home currency, with the lowest fees), other crypto, a card, or local money — USD, JPY, or LKR to start. For now this is a preview, so no real money moves.</p>
+      <h2>Where we're growing</h2>
+      <p>We grow one place at a time: a country, then a city, then the locals who know it best. New York City, Boston, and Ellsworth/Acadia (USA) come first. Kyoto in Japan and Sigiriya in Sri Lanka are already taking shape — they'll open for paid bookings once we've done right by each country's rules and found the right local partners. Adding the next place is careful work, not a rebuild.</p>
+      <h2>You'll see us on social. You book here.</h2>
+      <p>Drops can travel as little cards to Instagram, TikTok, YouTube Shorts, Reddit, and Facebook, so friends can see them anywhere. But the exact spot, and booking the local behind it, only happen here on Raahi.</p>
     </div>
   </section>
 </main>
 
 <footer>
-  <p>RAAHI NOW · now.raahi.io · Save the dime. Spend the time. · Demo build — photos are placeholders for locals' real photos.</p>
+  <p>RAAHI NOW · now.raahi.io · Save the dime. Spend the time. · Preview build — the photos are stand-ins until locals share their own.</p>
 </footer>
 
 <!-- Unlock / Book modal -->

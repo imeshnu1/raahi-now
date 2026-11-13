@@ -47,7 +47,7 @@ function requireAuth(action) {
 function openAuth(mode) {
   openModal(`
     <h3>${mode === 'signup' ? 'Create your Raahi account' : 'Welcome back'}</h3>
-    <p class="meta">One Raahi login for Drops, Asks, bookings and your wallet. Browsing stays free — you only need an account to unlock, ask, book or pay (demo).</p>
+    <p class="meta">One account for Drops, Asks, bookings, and your wallet. Looking around is always free — you only need an account when you want to unlock, ask, book, or pay. This is a preview, so no real money moves.</p>
     <div class="auth-tabs">
       <button type="button" class="${mode === 'signup' ? 'accent' : 'ghost'}" id="tabSignup">Create account</button>
       <button type="button" class="${mode === 'login' ? 'accent' : 'ghost'}" id="tabLogin">Log in</button>
@@ -121,15 +121,15 @@ function renderWallet() {
   if (!state.wallet) {
     $('#walletBalance').textContent = '–';
     list.innerHTML = state.user
-      ? '<p class="muted">No demo payments yet.</p>'
-      : '<p class="muted">Log in or create an account to see your wallet.</p>';
+      ? '<p class="muted">No payments yet.</p>'
+      : '<p class="muted">Log in to see your wallet.</p>';
     return;
   }
   $('#creditCount').textContent = state.wallet.creditsBalance;
   $('#walletBalance').textContent = state.wallet.creditsBalance;
-  if (!state.wallet.payments.length) { list.innerHTML = '<p class="muted">No demo payments yet.</p>'; return; }
+  if (!state.wallet.payments.length) { list.innerHTML = '<p class="muted">No payments yet. When you top up or unlock something, it will show up here.</p>'; return; }
   list.innerHTML = state.wallet.payments.map((p) =>
-    `<div class="list-item"><strong>${esc(p.kind)}</strong> · ${esc(p.method)} · ${p.credits} credits · DEMO<br>
+    `<div class="list-item"><strong>${esc(p.kind)}</strong> · ${esc(p.method)} · ${p.credits} credits · preview<br>
      <span class="meta">${esc(p.detail)}${p.walletAddress ? ' · wallet ' + esc(truncateAddress(p.walletAddress)) : ''} · ${new Date(p.createdAt).toLocaleString()}</span></div>`).join('');
 }
 
@@ -164,8 +164,8 @@ function renderWalletAddress() {
   if (!line) return;
   const addr = state.user && state.user.walletAddress;
   line.textContent = addr
-    ? `Wallet connected: ${truncateAddress(addr)} — crypto payments (demo) will record this address.`
-    : 'No wallet connected. Connect one to pay with Ninjji, ETH or USDC. Any wallet works — no lock-in.';
+    ? `Wallet connected: ${truncateAddress(addr)}. When you pay with crypto, we'll note this address (preview only).`
+    : 'No wallet connected yet. Connect one if you\'d like to pay with Ninjji, ETH, or USDC. Any wallet is welcome.';
   const input = $('#walletAddressInput');
   if (input && addr && !input.value) input.value = addr;
 }
@@ -184,14 +184,14 @@ async function connectWallet() {
       try {
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
         const address = accounts && accounts[0];
-        if (!address) { msg.textContent = 'No account was shared by the wallet.'; return; }
+        if (!address) { msg.textContent = 'Your wallet didn\'t share an account. Try again, or paste your address below.'; return; }
         await saveWalletAddress(address);
-        msg.textContent = `Wallet connected and saved: ${truncateAddress(address)}`;
+        msg.textContent = `All set — your wallet is connected and saved: ${truncateAddress(address)}`;
       } catch (err) {
-        msg.textContent = 'Wallet connection was cancelled or failed. You can paste an address manually instead.';
+        msg.textContent = 'That didn\'t go through — no problem. You can paste your address below instead.';
       }
     } else {
-      msg.textContent = 'No browser wallet found (for example MetaMask). No problem — paste any wallet address below and save it. Any wallet works.';
+      msg.textContent = 'We couldn\'t find a browser wallet (like MetaMask). No problem — just paste your address below and save it.';
       const input = $('#walletAddressInput');
       if (input) input.focus();
     }
@@ -218,10 +218,10 @@ function dropCard(d) {
   const local = d.local || {};
   const left = d.unlocksLeft;
   const action = d.unlocked
-    ? `<div class="exact"><strong>Unlocked (demo):</strong> ${esc(d.exactPlace)}<br><span class="meta">${esc(d.meetDetail || '')}</span></div>`
-    : `<p class="meta">Exact place hidden · about: ${esc(d.fuzzyLocation)}</p>
+    ? `<div class="exact"><strong>Unlocked:</strong> ${esc(d.exactPlace)}<br><span class="meta">${esc(d.meetDetail || '')}</span></div>`
+    : `<p class="meta">Exact spot hidden for now · around: ${esc(d.fuzzyLocation)}</p>
        <button class="accent" data-unlock="${d.id}" ${d.status !== 'live' ? 'disabled' : ''}>
-         ${d.status === 'live' ? `Unlock · ${d.priceCredits} credits` : 'Closed for today'}</button>`;
+         ${d.status === 'live' ? `Unlock this Drop · ${d.priceCredits} credits` : 'Closed for today'}</button>`;
   return `<article class="drop">
     <img src="${esc(d.image)}" alt="${esc(d.title)}" loading="lazy"
       onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=70'">
@@ -229,7 +229,7 @@ function dropCard(d) {
       <div class="badges">
         <span class="badge ${d.status === 'live' ? 'live' : 'closed'}">${d.status === 'live' ? '● Live' : d.status}</span>
         <span class="badge soft">${esc(marketName(d.marketId))}</span>
-        ${d.illustrative ? '<span class="badge soft">Illustrative example</span>' : ''}
+        ${d.illustrative ? '<span class="badge soft">Example Drop</span>' : ''}
         <span class="badge soft" data-countdown="${d.expiresAt}">${countdown(d.expiresAt)}</span>
         <span class="badge soft">${left} of ${d.unlockCap} unlocks left</span>
       </div>
@@ -238,7 +238,7 @@ function dropCard(d) {
       <p class="meta">Perfect for: ${esc(d.perfectFor)} · Cost: ${esc(d.costRange)} · Time: ${esc(d.timeNeeded)}<br>Watch out: ${esc(d.warning)}</p>
       ${action}
       <p class="local-line">By <strong>${esc(local.name || '')}</strong> · ${esc(local.role || '')} · verified local<br>
-      <span class="meta">${esc(local.bookingLabel || '')} · ${local.bookingPriceCredits || ''} credits · payout in ${esc(local.payoutCurrency || '')}</span></p>
+      <span class="meta">${esc(local.bookingLabel || '')} · ${local.bookingPriceCredits || ''} credits · gets paid in ${esc(local.payoutCurrency || '')}</span></p>
       <button class="ghost" data-book="${local.id}" data-drop="${d.id}">Book ${esc(local.name || 'this person')}</button>
     </div>
   </article>`;
@@ -251,27 +251,27 @@ async function loadDrops() {
   renderChips();
   $('#dropsGrid').innerHTML = state.drops.length
     ? state.drops.map(dropCard).join('')
-    : '<p class="muted">No Drops in this market right now.</p>';
+    : '<p class="muted">No Drops here right now. Try another market, or check back soon.</p>';
   document.querySelectorAll('[data-unlock]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openUnlock(b.dataset.unlock))));
   document.querySelectorAll('[data-book]').forEach((b) => b.addEventListener('click', () => requireAuth(() => openBook(b.dataset.book, b.dataset.drop))));
 }
 
 async function loadBookings() {
   const el = $('#bookingsList');
-  if (!state.user) { state.bookings = []; el.innerHTML = '<p class="muted">Log in to see your bookings. Unlock a Drop and book the person behind it.</p>'; return; }
+  if (!state.user) { state.bookings = []; el.innerHTML = '<p class="muted">Log in to see your bookings. Unlock a Drop, and you can book the local behind it.</p>'; return; }
   const { bookings } = await api('/api/bookings');
   state.bookings = bookings;
-  if (!bookings.length) { el.innerHTML = '<p class="muted">No bookings yet. Unlock a Drop and book the person behind it.</p>'; return; }
+  if (!bookings.length) { el.innerHTML = '<p class="muted">No bookings yet. Unlock a Drop, and you can book the local behind it.</p>'; return; }
   el.innerHTML = bookings.map((b) =>
     `<div class="list-item"><strong>${esc(b.local ? b.local.name : b.localId)}</strong> · ${esc(b.when)} · ${b.people} people<br>
-     <span class="meta">Status: ${esc(b.status)} · DEMO booking request · pay method on file: ${esc(b.method)}</span></div>`).join('');
+     <span class="meta">Status: ${esc(b.status)} · booking request (preview) · paying with: ${esc(b.method)}</span></div>`).join('');
 }
 
 async function loadAsks() {
   const { asks } = await api('/api/asks');
   state.asks = asks;
   const el = $('#asksList');
-  if (!asks.length) { el.innerHTML = '<p class="muted">No Asks yet.</p>'; return; }
+  if (!asks.length) { el.innerHTML = '<p class="muted">No Asks yet. Yours could be the first.</p>'; return; }
   el.innerHTML = asks.map((a) => `
     <div class="list-item">
       <strong>${esc(marketName(a.marketId))}</strong> <span class="meta">${new Date(a.createdAt).toLocaleString()}</span>
@@ -280,7 +280,7 @@ async function loadAsks() {
       ${(a.answers || []).map((ans) => `<div class="answer"><strong>${esc(ans.local ? ans.local.name : 'Local')}:</strong> ${esc(ans.text)}</div>`).join('')}
       <form class="answer-form" data-answer="${a.id}">
         <select name="localId">${state.drops.length || true ? localOptions(a.marketId) : ''}</select>
-        <input name="text" placeholder="Your one recommendation as this local" required>
+        <input name="text" placeholder="Your one recommendation, as this local" required>
         <button class="ghost" type="submit">Answer this Ask</button>
       </form>
     </div>`).join('');
@@ -320,13 +320,13 @@ function openUnlock(dropId) {
   openModal(`
     <h3>Unlock this Drop</h3>
     <p>${esc(d.title)}</p>
-    <p class="meta">Costs ${d.priceCredits} demo credits. The local keeps 80%, Raahi keeps 20%. No real money moves.</p>
+    <p class="meta">Costs ${d.priceCredits} credits. The local keeps 80%, Raahi keeps 20%. This is a preview — no real money moves.</p>
     <p class="meta">${state.user && state.user.walletAddress
-      ? `Crypto wallet connected: ${esc(truncateAddress(state.user.walletAddress))} — crypto payments (demo) record this address.`
-      : 'No crypto wallet connected. You can still pay (demo), or connect a wallet in the Wallet tab first.'}</p>
+      ? `Your crypto wallet is connected: ${esc(truncateAddress(state.user.walletAddress))}. If you pay with crypto, we'll note this address.`
+      : 'No crypto wallet connected. You can still unlock now, or connect a wallet first in the Wallet tab.'}</p>
     <form id="unlockForm">
-      <label>Pay with (demo, open payments)<select name="method">${methodOptions()}</select></label>
-      <button class="accent" type="submit">Unlock · ${d.priceCredits} credits</button>
+      <label>Pay with<select name="method">${methodOptions()}</select></label>
+      <button class="accent" type="submit">Unlock this Drop · ${d.priceCredits} credits</button>
       <button class="ghost" type="button" id="cancelBtn">Cancel</button>
     </form>`);
   $('#cancelBtn').addEventListener('click', closeModal);
@@ -347,13 +347,13 @@ function openBook(localId, dropId) {
   if (!local) return;
   openModal(`
     <h3>Book ${esc(local.name)}</h3>
-    <p>${esc(local.bookingLabel)} · ${local.bookingPriceCredits} credits if confirmed · payout to the local in ${esc(local.payoutCurrency)}</p>
+    <p>${esc(local.bookingLabel)} · ${local.bookingPriceCredits} credits if they say yes · the local gets paid in ${esc(local.payoutCurrency)}</p>
     <p class="meta">${esc(local.bio)}</p>
     <form id="bookForm">
       <label>When <input name="when" required placeholder="Tomorrow 6:30 AM"></label>
       <label>People <input name="people" type="number" min="1" max="12" value="2"></label>
-      <label>Preferred pay method (demo)<select name="method">${methodOptions()}</select></label>
-      <button class="accent" type="submit">Send booking request (demo)</button>
+      <label>How you'd like to pay<select name="method">${methodOptions()}</select></label>
+      <button class="accent" type="submit">Send booking request</button>
       <button class="ghost" type="button" id="cancelBtn">Cancel</button>
     </form>`);
   $('#cancelBtn').addEventListener('click', closeModal);
@@ -378,7 +378,7 @@ $('#askForm').addEventListener('submit', async (e) => {
       marketId: $('#askMarket').value, text: $('#askText').value,
       hours: $('#askHours').value, budget: $('#askBudget').value, method: $('#askMethod').value }) });
     state.wallet = r.wallet; renderWallet();
-    msg.textContent = 'Ask posted (demo). Locals can answer it below.';
+    msg.textContent = 'Your Ask is up. Locals can answer it below.';
     e.target.reset(); fillMethodSelects(); loadAsks();
   } catch (err) { msg.textContent = err.message; }
 });
@@ -400,11 +400,11 @@ $('#walletAddressForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = $('#walletAddressMsg');
   const address = $('#walletAddressInput').value.trim();
-  if (!address) { msg.textContent = 'Paste a wallet address first.'; return; }
-  if (!state.user) { requireAuth(async () => { try { await saveWalletAddress(address); msg.textContent = 'Wallet address saved to your account.'; } catch (err) { msg.textContent = err.message; } }); return; }
+  if (!address) { msg.textContent = 'Paste your wallet address first, then save.'; return; }
+  if (!state.user) { requireAuth(async () => { try { await saveWalletAddress(address); msg.textContent = 'Saved — that address is on your account now.'; } catch (err) { msg.textContent = err.message; } }); return; }
   try {
     await saveWalletAddress(address);
-    msg.textContent = 'Wallet address saved to your account.';
+    msg.textContent = 'Saved — that address is on your account now.';
   } catch (err) { msg.textContent = err.message; }
 });
 
@@ -428,6 +428,6 @@ setInterval(() => {
     await loadBookings();
     renderWalletAddress();
   } catch (err) {
-    $('#dropsGrid').innerHTML = `<p class="muted">Could not load: ${esc(err.message)}</p>`;
+    $('#dropsGrid').innerHTML = `<p class="muted">Something didn't load: ${esc(err.message)}. Try refreshing the page.</p>`;
   }
 })();
