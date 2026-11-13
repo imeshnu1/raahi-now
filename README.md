@@ -35,8 +35,8 @@ What to try: filter Drops by market, unlock the Kyoto Drop with Ninjji, top up t
 ```
 raahi-now-app/
 ├── index.html        # Single-page frontend (Drops / Ask / Wallet / Plan tabs)
-├── styles.css        # Palette only: #1A1A1A, #FFFFFF, #E8926A, #F4EFEA, #6B6B6B
-├── app.js            # Frontend logic — talks only to /api/*
+├── public/styles.css # Palette only: #1A1A1A, #FFFFFF, #E8926A, #F4EFEA, #6B6B6B
+├── public/main.js    # Frontend logic — talks only to /api/* (in public/, the static output dir)
 ├── server.js         # Local dev server (serves the frontend + /api locally)
 ├── api/              # Vercel serverless functions (one file per endpoint)
 │   ├── drops.js      GET  /api/drops?market=nyc|boston|ellsworth|kyoto|sigiriya|all
@@ -102,7 +102,7 @@ git push -u origin main
 
 2. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import the `raahi-now` repo.
 3. Framework preset: **Other**. Build command: leave empty. Output directory: leave default (project root). No environment variables are needed (see below).
-4. Click **Deploy**. Vercel serves `index.html` / `styles.css` / `app.js` as static files and each file in `api/` as a serverless function.
+4. Click **Deploy**. Vercel serves the `public/` folder (`index.html` / `styles.css` / `main.js`) as static files and each file in `api/` as a serverless function.
 5. Open the generated `*.vercel.app` URL and test: Drops load, unlock works, wallet top-up works.
 
 ### Option B — Vercel CLI

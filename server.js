@@ -11,6 +11,7 @@ const path = require('path');
 const { handle } = require('./lib/api');
 
 const ROOT = __dirname;
+const PUBLIC = path.join(__dirname, 'public');
 const PORT = process.env.PORT || 3000;
 
 const API_ROUTES = {
@@ -40,8 +41,8 @@ const server = http.createServer((req, res) => {
     return handle(req, res, API_ROUTES[url.pathname]);
   }
   let file = url.pathname === '/' ? '/index.html' : url.pathname;
-  const full = path.join(ROOT, decodeURIComponent(file));
-  if (!full.startsWith(ROOT) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+  const full = path.join(PUBLIC, decodeURIComponent(file));
+  if (!full.startsWith(PUBLIC) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'text/plain');
     return res.end('Not found');
