@@ -30,8 +30,8 @@ strong,b{font-weight:500}
 .accent-text{color:var(--accent)}
 .brand-domain{color:var(--gray);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.topbtn{background:transparent;color:var(--ink);border:1px solid var(--hairline-strong);border-radius:2px;padding:9px 18px;font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
-.topbtn.accent-btn{background:var(--ink);border-color:var(--ink);color:var(--white)}
+.topbtn{background:transparent;color:var(--ink);border:1px solid var(--hairline-strong);border-radius:999px;padding:9px 18px;font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.topbtn.accent-btn{background:var(--accent);border-color:var(--accent);color:var(--ink)}
 .user-chip{color:var(--gray);font-size:13px;font-weight:400;letter-spacing:.04em}
 .wallet-pill{background:var(--white);color:var(--ink);border:1px solid var(--hairline-strong);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
 .wallet-pill strong{font-weight:500}
@@ -79,8 +79,8 @@ h2{font-family:var(--serif);font-weight:400;font-size:28px;line-height:1.2;margi
 
 /* ---------- Buttons: slim ink primary, hairline ghost ---------- */
 button{font-family:var(--sans)}
-button.accent,.drop button.accent,.card button.accent{background:var(--ink);color:var(--white);border:1px solid var(--ink);border-radius:2px;padding:12px 24px;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
-button.ghost{background:var(--white);color:var(--ink);border:1px solid var(--hairline-strong);border-radius:2px;padding:11px 20px;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+button.accent,.drop button.accent,.card button.accent{background:var(--accent);color:var(--ink);border:1px solid var(--accent);border-radius:999px;padding:12px 26px;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+button.ghost{background:var(--white);color:var(--ink);border:1px solid var(--hairline-strong);border-radius:999px;padding:11px 22px;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
 
 /* ---------- Forms ---------- */
