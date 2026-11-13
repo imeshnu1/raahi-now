@@ -13,8 +13,8 @@
 <body>
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">R</span>
-    <span class="brand-name">RAAHI <span class="accent-text">NOW</span></span>
+    <img id="brandLogo" class="brand-logo" alt="Raahi app logo">
+    <span class="brand-name">RAA<span class="accent-text">HI</span> <span class="brand-now">NOW</span></span>
     <span class="brand-domain">now.raahi.io</span>
   </div>
   <div class="header-right">
@@ -106,6 +106,13 @@
   <!-- PLAN -->
   <section id="tab-plan" class="tab">
     <h1>Plan with Leo</h1>
+    <div class="leo-hero">
+      <img id="leoImg" alt="Leo, Raahi's barn swallow mascot">
+      <div>
+        <h2>Meet Leo</h2>
+        <p>Leo is a barn swallow, and Raahi's mascot. Swallows cross continents and always find their way home. That is the spirit of every plan here.</p>
+      </div>
+    </div>
     <div class="card">
       <h2>One domain: now.raahi.io</h2>
       <p>Raahi NOW lives on a subdomain of raahi.io, the domain Raahi already owns. No new domain, one brand, one login, one wallet. raahi.io stays the main home; now.raahi.io is where live Drops, Asks, unlocks and local storefronts happen.</p>
@@ -136,6 +143,14 @@
   <div class="modal" id="modalBox"></div>
 </div>
 
+<script src="/brand-data.js"></script>
+<script>
+  if (window.BRAND) {
+    var bl = document.getElementById('brandLogo'); if (bl) bl.src = window.BRAND.logo;
+    var li = document.getElementById('leoImg'); if (li) li.src = window.BRAND.leo;
+    var fav = document.createElement('link'); fav.rel = 'icon'; fav.href = window.BRAND.logo; document.head.appendChild(fav);
+  }
+</script>
 <script src="/main.js"></script>
 </body>
 </html>

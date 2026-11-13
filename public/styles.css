@@ -26,6 +26,13 @@ strong,b{font-weight:500}
 .topbar{display:flex;justify-content:space-between;align-items:center;background:var(--white);color:var(--ink);padding:18px 28px;border-bottom:1px solid var(--hairline);position:sticky;top:0;z-index:5}
 .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .brand-mark{font-family:var(--serif);font-weight:500;font-size:30px;line-height:1;color:var(--ink);background:none;padding:0;border-radius:0}
+.brand-logo{width:38px;height:38px;border-radius:9px;display:block}
+.brand-now{font-weight:400;color:var(--gray)}
+.leo-hero{display:flex;gap:26px;align-items:center;background:var(--white);border:1px solid var(--hairline);border-radius:4px;box-shadow:var(--shadow-soft);padding:22px 24px;margin-bottom:22px}
+.leo-hero img{width:150px;height:150px;object-fit:cover;border-radius:4px;flex:none}
+.leo-hero h2{margin:0 0 8px}
+.leo-hero p{margin:0;color:var(--gray)}
+@media (max-width:560px){.leo-hero{flex-direction:column;align-items:flex-start}.leo-hero img{width:110px;height:110px}}
 .brand-name{font-family:var(--serif);font-weight:500;letter-spacing:.22em;font-size:20px}
 .accent-text{color:var(--accent)}
 .brand-domain{color:var(--gray);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
