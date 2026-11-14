@@ -714,17 +714,62 @@ $('#topupForm').addEventListener('submit', async (e) => {
   } catch (err) { msg.textContent = err.message; }
 });
 
+// Date + time pickers → one friendly line, e.g. "Tomorrow (Sun, Nov 15), 10:00 AM – 12:00 PM".
+function localISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function formatTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function buildWhenText(dateVal, startVal, endVal) {
+  const parts = [];
+  if (dateVal) {
+    const [y, mo, d] = dateVal.split('-').map(Number);
+    const date = new Date(y, mo - 1, d);
+    const label = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((date - today) / 86400000);
+    parts.push(diff === 0 ? `Today (${label})` : diff === 1 ? `Tomorrow (${label})` : label);
+  }
+  if (startVal && endVal) parts.push(`${formatTime(startVal)} – ${formatTime(endVal)}`);
+  else if (startVal) parts.push(`from ${formatTime(startVal)}`);
+  else if (endVal) parts.push(`until ${formatTime(endVal)}`);
+  return parts.join(', ');
+}
+$('#offerDate').min = localISODate(new Date());
+
+// "Until" can't be earlier than (or the same as) "From" — check as soon as either time changes.
+function checkOfferTimes() {
+  const start = $('#offerStart'), end = $('#offerEnd'), err = $('#offerTimeError');
+  end.min = start.value || '';
+  const bad = Boolean(start.value && end.value && end.value <= start.value);
+  const text = bad ? `"Until" must be later than ${formatTime(start.value)}. Please pick a later time.` : '';
+  end.setCustomValidity(text);
+  end.classList.toggle('invalid', bad);
+  err.textContent = text;
+  err.hidden = !bad;
+  return !bad;
+}
+['#offerStart', '#offerEnd'].forEach((sel) => {
+  $(sel).addEventListener('input', checkOfferTimes);
+  $(sel).addEventListener('change', checkOfferTimes);
+});
+
 $('#offerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = $('#offerMsg');
+  const dateVal = $('#offerDate').value, startVal = $('#offerStart').value, endVal = $('#offerEnd').value;
+  if (dateVal && dateVal < localISODate(new Date())) { msg.textContent = 'Please pick today or a later date.'; return; }
+  if (!checkOfferTimes()) { $('#offerEnd').focus(); return; }
   try {
     const r = await api('/api/offers', { method: 'POST', body: JSON.stringify({
       title: $('#offerTitle').value, marketId: $('#offerMarket').value,
-      detail: $('#offerDetail').value, whenText: $('#offerWhen').value,
+      detail: $('#offerDetail').value, whenText: buildWhenText(dateVal, startVal, endVal),
       spots: Number($('#offerSpots').value), priceCredits: Number($('#offerPrice').value),
       name: $('#offerName').value }) });
     msg.textContent = r.message + (r.claimToken ? ` Your claim code: ${r.claimToken} — keep it somewhere safe.` : '');
-    e.target.reset(); renderChips(); loadOffers();
+    e.target.reset(); checkOfferTimes(); renderChips(); loadOffers();
   } catch (err) { msg.textContent = err.message; }
 });
 
@@ -795,3 +840,9 @@ setInterval(() => {
     $('#dropsGrid').innerHTML = `<p class="muted">Something didn't load: ${esc(err.message)}. Try refreshing the page.</p>`;
   }
 })();
+
+// Open the calendar / clock when the whole field is clicked, not just the small icon.
+['#offerDate', '#offerStart', '#offerEnd'].forEach((sel) => {
+  const el = $(sel);
+  el.addEventListener('click', () => { try { el.showPicker(); } catch (_) {} });
+});
