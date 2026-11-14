@@ -62,6 +62,7 @@ const server = http.createServer((req, res) => {
     return res.end('Not found');
   }
   res.setHeader('Content-Type', TYPES[path.extname(full)] || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'no-cache'); // always pick up edited HTML/JS/CSS
   fs.createReadStream(full).pipe(res);
 });
 
