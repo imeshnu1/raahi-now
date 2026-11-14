@@ -149,3 +149,7 @@ footer{background:var(--white);border-top:1px solid var(--hairline);padding:36px
   .drop-body{padding:20px}
   .modal{padding:24px}
 }
+.when-row input[type=date],.when-row input[type=time]{cursor:pointer;min-height:44px}
+.when-row input::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.7}
+.when-row input.invalid{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.field-error{margin:-6px 0 0;font-size:14px;color:var(--accent);font-weight:500}
