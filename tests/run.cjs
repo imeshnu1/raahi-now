@@ -11,8 +11,9 @@
 //  - runs the v2 feature tests (offers, buddies, events, share outbox,
 //    tips, Izzy matches, offer bookings, pickup location), the payment
 //    methods reset (US dollars first, small crypto set), the social
-//    engine drain endpoints (token-gated outbox), and the core
-//    regression set (auth gate, per-user wallet, unlock, QA B4–B9),
+//    engine drain endpoints (token-gated outbox), the social poster
+//    worker (tools/social-poster.mjs, dry-run + token refusal), and the
+//    core regression set (auth gate, per-user wallet, unlock, QA B4–B9),
 //  - prints PASS/FAIL per check and exits non-zero on any failure.
 
 const fs = require('fs');
@@ -211,11 +212,16 @@ async function apiTests() {
     !(outAfter.data.outbox || []).some((o) => o.id === (share.data && share.data.id)));
 
   const accounts = await call('GET', '/api/social-accounts');
-  check('GET /api/social-accounts → 200, 5 platforms, handles null',
+  const igAccount = (accounts.data.accounts || []).find((x) => x.platform === 'instagram');
+  check('GET /api/social-accounts → 200, 5 platforms, Instagram connected (@i.travel.with.raahi), other handles null',
     accounts.status === 200 && Array.isArray(accounts.data.accounts) && accounts.data.accounts.length === 5
-      && accounts.data.accounts.every((x) => x.handle === null)
+      && !!igAccount && igAccount.handle === 'i.travel.with.raahi' && igAccount.status === 'connected'
+      && accounts.data.accounts.filter((x) => x.platform !== 'instagram').every((x) => x.handle === null)
       && ['instagram', 'tiktok', 'youtube', 'reddit', 'facebook'].every((p) => accounts.data.accounts.some((x) => x.platform === p)),
     accounts.status !== 200 ? JSON.stringify(accounts.data) : undefined);
+  check('GET /api/social-accounts never exposes the internal connector account id',
+    !JSON.stringify(accounts.data).includes('17841430973767174')
+      && (accounts.data.accounts || []).every((x) => !('connectorAccountId' in x)));
 
   // --- regression: unlock gate + flow (user B balance tracking) ---
   const unlockAnon = await call('POST', '/api/unlock', { body: { dropId: 'drop-kyoto-food', method: 'ninjji' } });
@@ -297,6 +303,59 @@ async function apiTests() {
   check('unlock with removed method (eth) → 400', unlockEth.status === 400);
 }
 
+// ---------- social poster worker (tools/social-poster.mjs) ----------
+// Runs against the same test server (SOCIAL_ENGINE_TOKEN=test-social-token).
+// Dry-run only: the poster must plan the Instagram action for a queued
+// Drop row, plan a "no image" failure for a queued Event row, leave the
+// outbox untouched, and refuse with the clear 401 message on a wrong or
+// missing token. The real CLI is never invoked here.
+async function posterTests() {
+  const parse = spawnSync('node', ['--check', path.join(ROOT, 'tools', 'social-poster.mjs')], { encoding: 'utf8' });
+  check('poster: tools/social-poster.mjs parses (node --check)', parse.status === 0,
+    parse.status !== 0 ? (parse.stderr || '').split('\n')[0] : undefined);
+
+  const dropShare = await call('POST', '/api/share', { body: { kind: 'drop', refId: 'drop-nyc-birds' } });
+  check('poster setup: drop share queued → 201', dropShare.status === 201 && !!dropShare.data.id,
+    dropShare.status !== 201 ? JSON.stringify(dropShare.data) : undefined);
+  const eventShare = await call('POST', '/api/share', { body: { kind: 'event', refId: 'event-ellsworth-cheese' } });
+  check('poster setup: event share queued → 201', eventShare.status === 201 && !!eventShare.data.id,
+    eventShare.status !== 201 ? JSON.stringify(eventShare.data) : undefined);
+
+  const runPoster = (token) => spawnSync('node', [path.join(ROOT, 'tools', 'social-poster.mjs'), '--dry-run'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, SOCIAL_ENGINE_TOKEN: token, NOW_BASE_URL: BASE },
+  });
+
+  const dry = runPoster('test-social-token');
+  const dryOut = `${dry.stdout || ''}\n${dry.stderr || ''}`;
+  check('poster --dry-run with token → exit 0', dry.status === 0, dry.status !== 0 ? dryOut.slice(0, 300) : undefined);
+  check('poster --dry-run plans the Instagram post for the queued Drop row (image + post-feed)',
+    dryOut.includes(dropShare.data.id) && dryOut.includes('instagram-cli post-feed') && dryOut.includes('images.unsplash.com'),
+    dryOut.slice(0, 300));
+  check('poster --dry-run plans "no image" failure for the queued Event row',
+    dryOut.includes(eventShare.data.id) && dryOut.includes('NO IMAGE'), dryOut.slice(0, 300));
+  check('poster --dry-run never prints the internal connector account id',
+    !dryOut.includes('17841430973767174'));
+
+  const stillQueued = await call('GET', '/api/outbox', { headers: { 'x-social-token': 'test-social-token' } });
+  check('poster --dry-run left the outbox untouched (both rows still queued)',
+    (stillQueued.data.outbox || []).some((o) => o.id === dropShare.data.id)
+      && (stillQueued.data.outbox || []).some((o) => o.id === eventShare.data.id));
+
+  const wrong = runPoster('wrong-token');
+  const wrongOut = `${wrong.stdout || ''}\n${wrong.stderr || ''}`;
+  check('poster with wrong token → non-zero exit + clear 401 message',
+    wrong.status !== 0 && wrongOut.includes('401') && wrongOut.includes('SOCIAL_ENGINE_TOKEN'),
+    `exit=${wrong.status} out=${wrongOut.slice(0, 200)}`);
+
+  const missing = runPoster('');
+  const missingOut = `${missing.stdout || ''}\n${missing.stderr || ''}`;
+  check('poster with missing token → non-zero exit + clear message',
+    missing.status !== 0 && missingOut.includes('SOCIAL_ENGINE_TOKEN is missing'),
+    `exit=${missing.status} out=${missingOut.slice(0, 200)}`);
+}
+
 async function main() {
   staticChecks();
 
@@ -311,7 +370,7 @@ async function main() {
   try {
     const ready = await waitReady();
     check('server boots on fallback store', ready, ready ? undefined : serverLog.slice(0, 300));
-    if (ready) await apiTests();
+    if (ready) { await apiTests(); await posterTests(); }
   } finally {
     server.kill('SIGTERM');
     await new Promise((r) => setTimeout(r, 300));
