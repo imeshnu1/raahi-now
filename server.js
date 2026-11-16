@@ -27,6 +27,7 @@ const API_ROUTES = {
   '/api/login': 'login',
   '/api/logout': 'logout',
   '/api/me': 'me',
+  '/api/me-socials': 'me-socials',
   '/api/wallet-address': 'wallet-address',
   '/api/offers': 'offers',
   '/api/buddies': 'buddies',

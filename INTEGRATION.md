@@ -165,6 +165,72 @@ into the central engine unchanged.
   traveler/expert apps can hand a user straight into a Drop, Offer, or
   Event later (e.g. `raahi-now://drop/<id>`).
 
+## 6. Distribution strategy — post once on Raahi, appear everywhere
+
+The point of NOW's social distribution: a vendor, local, or traveler
+posts **once**, on Raahi, and the post travels for them. Nobody should
+have to re-post the same thing on five platforms by hand.
+
+### Tier 1 — Raahi posts it, with the poster tagged (LIVE)
+
+- Every Offer, Buddy post, and Event can carry the poster's Instagram
+  handle: an optional field on the posting forms ("Your Instagram @ —
+  we'll tag you when this goes out"), or the handle saved on their
+  profile (below). Handles are normalized on the way in (leading `@`
+  stripped, simple handle pattern validated) and stored without `@`:
+  `socials: { instagram }` JSON on `offers` / `buddy_posts` / `events`
+  (Neon TEXT column, file-store object). Drops carry an optional
+  `instagram` field in the seed shape for the same purpose (all null
+  today — no invented handles for the seeded locals).
+- A logged-in member saves their handles once — `POST
+  /api/me-socials` (rides `api/auth.js` via a `vercel.json` rewrite;
+  body `{ instagram?, tiktok?, youtube? }`, stored as `users.socials`
+  JSON, returned on `/api/me`). When they post without typing a
+  handle, the post defaults to the profile's Instagram handle; an
+  explicit handle on the post always wins.
+- When a post is queued and drained, `lib/social.js → buildPayloads`
+  attributes it: the Instagram caption gains **"Posted by @handle on
+  Raahi NOW"** and the payload carries `tagHandle`. Other platforms
+  get the plain version — **"Posted by \<name\> on Raahi NOW"** — an
+  @handle is only ever used on the platform it belongs to (v1 collects
+  Instagram handles only).
+- The poster worker (`tools/social-poster.mjs`) adds the **photo
+  tag** on top of the caption tag: it resolves the handle with
+  `instagram-cli profile --username <handle>` (returned username must
+  match, id must be numeric) and passes `--mentions
+  [{"user_fbid":…,"x":0.5,"y":0.5}]` to `post-feed`. A photo tag is
+  what puts the post in front of the poster's own audience (their
+  tagged photos / timeline), not just Raahi's followers. Resolution is
+  best-effort — if it fails, the post still goes out with the caption
+  @tag; a post never fails over tagging.
+- **Instagram collab-post invites are not available through the
+  current connector**, so tagging (caption + photo tag) is the
+  mechanism today. If the connector gains collab invites later, Tier 1
+  upgrades in the poster worker only — payloads already carry
+  everything needed.
+
+### Tier 2 — cross-posting INTO the poster's own accounts (DESIGNED, not built)
+
+The end state: the same post also appears **on the poster's own
+accounts**, posted as them, with no extra work for them. That requires
+the poster to connect their social account to Raahi (OAuth / Meta
+account linking + per-platform posting permissions) — you cannot post
+as someone without their grant, and there is no honest shortcut.
+
+- **Data model is ready:** `users.socials` (profile handles),
+  per-post `socials` (the handle a specific post carries), and the
+  outbox/payload pipeline (`tagHandle` + per-platform copy) all exist.
+  A connection adds one thing: a per-user, per-platform connection
+  record (provider, external account id, token reference, scopes,
+  status) next to `users.socials`.
+- **Next build, when prioritized:** the connection flow (link account
+  from the "Your socials" card in the Wallet tab), then a second drain
+  pass in the posting engine that posts a member's queued items to
+  their own connected accounts as well as Raahi's, marking each
+  destination separately in the outbox result. Until then, Tier 1
+  tagging is the distribution members get — and the UI copy says
+  exactly that ("we'll tag you"), nothing more.
+
 ## What is deliberately NOT done
 
 - No Firebase switch, no shared login, no calls to the main app's API,

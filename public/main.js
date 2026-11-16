@@ -29,6 +29,7 @@ function renderHeader() {
     $('#walletPill').hidden = true;
   }
   renderWalletAddress();
+  renderSocials();
   syncGuestNames();
 }
 
@@ -176,6 +177,18 @@ async function saveWalletAddress(address) {
   state.user = r.user;
   renderWalletAddress();
   return r;
+}
+
+// ---------- Your socials (distribution tagging) ----------
+function renderSocials() {
+  const s = (state.user && state.user.socials) || {};
+  const set = (sel, v) => {
+    const el = $(sel);
+    if (el && document.activeElement !== el) el.value = v ? '@' + v : '';
+  };
+  set('#socialInstagram', s.instagram);
+  set('#socialTiktok', s.tiktok);
+  set('#socialYoutube', s.youtube);
 }
 
 async function connectWallet() {
@@ -552,22 +565,28 @@ async function loadEvents() {
 
 // ---------- v2: Share kit ----------
 function findShareItem(kind, ref) {
-  if (kind === 'drop') { const d = state.drops.find((x) => x.id === ref); return d ? { title: d.title, detail: d.whyNow, when: countdown(d.expiresAt), marketId: d.marketId } : null; }
-  if (kind === 'offer') { const o = state.offers.find((x) => x.id === ref); return o ? { title: o.title, detail: o.detail, when: o.whenText, marketId: o.marketId } : null; }
-  if (kind === 'buddy') { const b = state.buddies.find((x) => x.id === ref); return b ? { title: b.title, detail: b.detail, when: b.whenText, marketId: b.marketId } : null; }
-  if (kind === 'event') { const e = state.events.find((x) => x.id === ref); return e ? { title: e.name, detail: e.detail, when: e.dateText, marketId: e.marketId } : null; }
+  if (kind === 'drop') { const d = state.drops.find((x) => x.id === ref); return d ? { title: d.title, detail: d.whyNow, when: countdown(d.expiresAt), marketId: d.marketId, posterName: d.local ? d.local.name : '', instagram: d.instagram || null } : null; }
+  if (kind === 'offer') { const o = state.offers.find((x) => x.id === ref); return o ? { title: o.title, detail: o.detail, when: o.whenText, marketId: o.marketId, posterName: o.posterName || '', instagram: o.socials ? o.socials.instagram : null } : null; }
+  if (kind === 'buddy') { const b = state.buddies.find((x) => x.id === ref); return b ? { title: b.title, detail: b.detail, when: b.whenText, marketId: b.marketId, posterName: b.posterName || '', instagram: b.socials ? b.socials.instagram : null } : null; }
+  if (kind === 'event') { const e = state.events.find((x) => x.id === ref); return e ? { title: e.name, detail: e.detail, when: e.dateText, marketId: e.marketId, posterName: e.posterName || '', instagram: e.socials ? e.socials.instagram : null } : null; }
   return null;
 }
 
 function shareCopies(kind, item) {
   const where = marketName(item.marketId);
   const signoff = 'Real locals. Real places. — Raahi NOW · now.raahi.io';
+  // Attribution mirrors lib/social.js buildPayloads: the Instagram
+  // caption @tags the poster when we have their handle; everywhere
+  // else it's their plain name.
+  const name = item.posterName || '';
+  const igAttr = item.instagram ? `Posted by @${item.instagram} on Raahi NOW` : (name ? `Posted by ${name} on Raahi NOW` : '');
+  const nameAttr = name ? `Posted by ${name} on Raahi NOW` : '';
   return {
-    instagram: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}\n\n${signoff}\n#RaahiNOW #LocalTravel`,
-    tiktok: `${item.title} — ${where} · ${signoff}`,
+    instagram: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}${igAttr ? '\n' + igAttr : ''}\n\n${signoff}\n#RaahiNOW #LocalTravel`,
+    tiktok: `${item.title} — ${where}${nameAttr ? ' · ' + nameAttr : ''} · ${signoff}`,
     redditTitle: `${item.title} (${where})`,
-    redditBody: `${item.detail || ''}\n\n${item.when ? 'When: ' + item.when + '\n\n' : ''}Sharing this from Raahi NOW, where locals post things like this themselves. ${signoff}`,
-    facebook: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}\n\n${signoff}`,
+    redditBody: `${item.detail || ''}\n\n${item.when ? 'When: ' + item.when + '\n\n' : ''}${name ? `Posted by ${name} on Raahi NOW, where locals post things like this themselves.` : 'Sharing this from Raahi NOW, where locals post things like this themselves.'} ${signoff}`,
+    facebook: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}${nameAttr ? '\n' + nameAttr : ''}\n\n${signoff}`,
   };
 }
 
@@ -722,6 +741,7 @@ $('#offerForm').addEventListener('submit', async (e) => {
       title: $('#offerTitle').value, marketId: $('#offerMarket').value,
       detail: $('#offerDetail').value, whenText: $('#offerWhen').value,
       spots: Number($('#offerSpots').value), priceCredits: Number($('#offerPrice').value),
+      socials: { instagram: $('#offerInstagram').value },
       name: $('#offerName').value }) });
     msg.textContent = r.message + (r.claimToken ? ` Your claim code: ${r.claimToken} — keep it somewhere safe.` : '');
     e.target.reset(); renderChips(); loadOffers();
@@ -735,7 +755,9 @@ $('#buddyForm').addEventListener('submit', async (e) => {
     const r = await api('/api/buddies', { method: 'POST', body: JSON.stringify({
       title: $('#buddyTitle').value, marketId: $('#buddyMarket').value,
       detail: $('#buddyDetail').value, whenText: $('#buddyWhen').value,
-      party: Number($('#buddyParty').value), name: $('#buddyName').value }) });
+      party: Number($('#buddyParty').value),
+      socials: { instagram: $('#buddyInstagram').value },
+      name: $('#buddyName').value }) });
     msg.textContent = r.message;
     e.target.reset(); renderChips(); loadBuddies();
   } catch (err) { msg.textContent = err.message; }
@@ -748,13 +770,33 @@ $('#eventForm').addEventListener('submit', async (e) => {
     const r = await api('/api/events', { method: 'POST', body: JSON.stringify({
       name: $('#eventName').value, marketId: $('#eventMarket').value,
       detail: $('#eventDetail').value, dateText: $('#eventDate').value,
-      placeText: $('#eventPlace').value, hostName: $('#eventNameYours').value }) });
+      placeText: $('#eventPlace').value,
+      socials: { instagram: $('#eventInstagram').value },
+      hostName: $('#eventNameYours').value }) });
     msg.textContent = r.message + (r.claimToken ? ` Your claim code: ${r.claimToken} — keep it somewhere safe.` : '');
     e.target.reset(); renderChips(); loadEvents();
   } catch (err) { msg.textContent = err.message; }
 });
 
 $('#connectWalletBtn').addEventListener('click', connectWallet);
+
+$('#socialsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#socialsMsg');
+  const save = async () => {
+    try {
+      const r = await api('/api/me-socials', { method: 'POST', body: JSON.stringify({
+        instagram: $('#socialInstagram').value,
+        tiktok: $('#socialTiktok').value,
+        youtube: $('#socialYoutube').value }) });
+      state.user = r.user;
+      renderSocials();
+      msg.textContent = 'Saved. We\'ll tag you when your posts go out.';
+    } catch (err) { msg.textContent = err.message; }
+  };
+  if (!state.user) { requireAuth(save); return; }
+  await save();
+});
 
 $('#walletAddressForm').addEventListener('submit', async (e) => {
   e.preventDefault();

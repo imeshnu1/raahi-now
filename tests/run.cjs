@@ -12,7 +12,9 @@
 //    tips, Izzy matches, offer bookings, pickup location), the payment
 //    methods reset (US dollars first, small crypto set), the social
 //    engine drain endpoints (token-gated outbox), the social poster
-//    worker (tools/social-poster.mjs, dry-run + token refusal), and the
+//    worker (tools/social-poster.mjs, dry-run + token refusal), the
+//    distribution upgrade (profile socials, per-post Instagram handles,
+//    payload attribution + tagHandle, poster tag planning), and the
 //    core regression set (auth gate, per-user wallet, unlock, QA B4–B9),
 //  - prints PASS/FAIL per check and exits non-zero on any failure.
 
@@ -71,6 +73,30 @@ function staticChecks() {
 
   const apiCount = fs.readdirSync(path.join(ROOT, 'api')).filter((f) => f.endsWith('.js')).length;
   check('static: api/ function count ≤ 12 (Hobby limit)', apiCount <= 12, `${apiCount} files`);
+
+  let dropHandlesOk = false;
+  try {
+    const seed = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'seed.json'), 'utf8'));
+    dropHandlesOk = seed.drops.every((d) => 'instagram' in d && d.instagram === null);
+  } catch { /* stays false */ }
+  check('static: seed Drops carry the instagram field (null — no invented handles)', dropHandlesOk);
+
+  // --- unit: handle normalization + payload attribution ---
+  const socialLib = require(path.join(ROOT, 'lib', 'social.js'));
+  const n1 = socialLib.normalizeHandle('@Good.Handle_1', 'instagram');
+  const n2 = socialLib.normalizeHandle('bad handle!', 'instagram');
+  const n3 = socialLib.normalizeHandle('   ', 'instagram');
+  const n4 = socialLib.normalizeHandle('@chan-name_1', 'youtube');
+  check('unit: normalizeHandle strips @, accepts dots/underscores, rejects junk, blank → null',
+    n1.ok && n1.handle === 'Good.Handle_1' && !n2.ok && n3.ok && n3.handle === null && n4.ok && n4.handle === 'chan-name_1');
+  const longPayloads = socialLib.buildPayloads({ kind: 'offer', title: 'T', detail: 'x'.repeat(4000), marketId: 'nyc', posterName: 'Long Poster', instagram: 'long.poster' });
+  check('unit: buildPayloads caps the Instagram caption at 2200 chars, attribution survives',
+    longPayloads.instagram.length <= 2200 && longPayloads.tagHandle === 'long.poster'
+      && /Posted by @long\.poster on Raahi NOW/.test(longPayloads.instagram),
+    `len=${longPayloads.instagram.length}`);
+  const barePayloads = socialLib.buildPayloads({ kind: 'offer', title: 'T', detail: 'D', marketId: 'nyc' });
+  check('unit: buildPayloads with no poster info → tagHandle null, no attribution line',
+    barePayloads.tagHandle === null && !/Posted by/.test(barePayloads.instagram) && !/Posted by/.test(barePayloads.facebook));
 }
 
 // ---------- tiny HTTP client with cookie jar ----------
@@ -301,6 +327,83 @@ async function apiTests() {
   check('unlock with JellyJelly → 200', unlockJelly.status === 200, unlockJelly.status !== 200 ? JSON.stringify(unlockJelly.data) : undefined);
   const unlockEth = await call('POST', '/api/unlock', { cookie: cookieA, body: { dropId: 'drop-acadia-sunset', method: 'eth' } });
   check('unlock with removed method (eth) → 400', unlockEth.status === 400);
+
+  // --- distribution: profile socials, post handles, payload tagging ---
+  const socAnon = await call('POST', '/api/me-socials', { body: { instagram: 'someone' } });
+  check('me-socials logged-out → 401', socAnon.status === 401);
+  const socSave = await call('POST', '/api/me-socials', { cookie: cookieA, body: { instagram: '@Hannah.Hosts', tiktok: 'hannahhosts' } });
+  check('me-socials save → 200, @ stripped, per-platform handles stored',
+    socSave.status === 200 && socSave.data.socials.instagram === 'Hannah.Hosts'
+      && socSave.data.socials.tiktok === 'hannahhosts' && socSave.data.socials.youtube === null,
+    socSave.status !== 200 ? JSON.stringify(socSave.data) : undefined);
+  const meAfter = await call('GET', '/api/me', { cookie: cookieA });
+  check('GET /api/me returns the saved socials',
+    !!meAfter.data.user && meAfter.data.user.socials.instagram === 'Hannah.Hosts' && meAfter.data.user.socials.tiktok === 'hannahhosts');
+  const socBad = await call('POST', '/api/me-socials', { cookie: cookieA, body: { instagram: 'not a handle!' } });
+  check('me-socials with an impossible handle → 400', socBad.status === 400);
+  const socClear = await call('POST', '/api/me-socials', { cookie: cookieA, body: { tiktok: '' } });
+  check('me-socials blank clears that handle, the others stay',
+    socClear.status === 200 && socClear.data.socials.tiktok === null && socClear.data.socials.instagram === 'Hannah.Hosts');
+
+  const defaultOffer = await call('POST', '/api/offers', { cookie: cookieA, body: { marketId: 'boston', title: 'Profile-handle offer', detail: 'No handle typed on the form.', whenText: 'Friday', spots: 2, priceCredits: 0 } });
+  check('offer by logged-in user without a typed handle → 201', defaultOffer.status === 201,
+    defaultOffer.status !== 201 ? JSON.stringify(defaultOffer.data) : undefined);
+  const offersD1 = await call('GET', '/api/offers');
+  const defaultOfferView = (offersD1.data.offers || []).find((o) => o.id === (defaultOffer.data.offer && defaultOffer.data.offer.id));
+  check('offer defaults to the profile Instagram handle',
+    !!defaultOfferView && !!defaultOfferView.socials && defaultOfferView.socials.instagram === 'Hannah.Hosts',
+    defaultOfferView ? JSON.stringify(defaultOfferView.socials) : 'offer missing');
+
+  const explicitBuddy = await call('POST', '/api/buddies', { cookie: cookieA, body: { marketId: 'boston', title: 'Explicit handle buddy', detail: 'Typed a different handle on this post.', whenText: 'Saturday', party: 2, socials: { instagram: '@other.handle' } } });
+  const buddiesD = await call('GET', '/api/buddies');
+  const explicitBuddyView = (buddiesD.data.buddies || []).find((x) => x.id === (explicitBuddy.data.buddy && explicitBuddy.data.buddy.id));
+  check('an explicit handle on the post wins over the profile handle',
+    explicitBuddy.status === 201 && !!explicitBuddyView && !!explicitBuddyView.socials && explicitBuddyView.socials.instagram === 'other.handle',
+    explicitBuddy.status !== 201 ? JSON.stringify(explicitBuddy.data) : undefined);
+
+  const guestTagged = await call('POST', '/api/offers', { body: { name: 'Tagged Tina', marketId: 'nyc', title: 'Tagged guest offer', detail: 'A guest typed her handle.', whenText: 'Sunday', spots: 2, priceCredits: 0, socials: { instagram: '@tina.travels' } } });
+  check('guest offer with an @handle → 201', guestTagged.status === 201,
+    guestTagged.status !== 201 ? JSON.stringify(guestTagged.data) : undefined);
+  const guestTaggedId = guestTagged.data.offer && guestTagged.data.offer.id;
+  const offersD2 = await call('GET', '/api/offers');
+  const guestTaggedView = (offersD2.data.offers || []).find((o) => o.id === guestTaggedId);
+  check('GET /api/offers includes the stored instagram handle (no @)',
+    !!guestTaggedView && !!guestTaggedView.socials && guestTaggedView.socials.instagram === 'tina.travels');
+  const guestBadHandle = await call('POST', '/api/offers', { body: { name: 'Bad Handle', marketId: 'nyc', title: 'T', detail: 'D', spots: 1, priceCredits: 0, socials: { instagram: 'no spaces allowed!' } } });
+  check('post with an impossible instagram handle → 400', guestBadHandle.status === 400);
+
+  const guestEventTagged = await call('POST', '/api/events', { body: { hostName: 'Jam Maker Jo', marketId: 'ellsworth', name: "Jo's Jam Social", detail: 'Jam and stories.', dateText: 'Sat Nov 21, 3 pm', placeText: 'Ellsworth', socials: { instagram: 'jo.makes.jam' } } });
+  const eventsD = await call('GET', '/api/events');
+  const guestEventView = (eventsD.data.events || []).find((e) => e.name === "Jo's Jam Social");
+  check('GET /api/events includes the stored instagram handle',
+    guestEventTagged.status === 201 && !!guestEventView && !!guestEventView.socials && guestEventView.socials.instagram === 'jo.makes.jam',
+    guestEventTagged.status !== 201 ? JSON.stringify(guestEventTagged.data) : undefined);
+
+  const shareTagged = await call('POST', '/api/share', { body: { kind: 'offer', refId: guestTaggedId } });
+  const sharePlain = await call('POST', '/api/share', { body: { kind: 'offer', refId: guestOfferId } });
+  check('share tagged + untagged offers → 201', shareTagged.status === 201 && sharePlain.status === 201);
+  const drainD = await call('GET', '/api/outbox', { headers: SOCIAL_HDR });
+  const taggedRow = (drainD.data.outbox || []).find((o) => o.id === (shareTagged.data && shareTagged.data.id));
+  const plainRow = (drainD.data.outbox || []).find((o) => o.id === (sharePlain.data && sharePlain.data.id));
+  check('payloads: tagHandle comes from the post handle',
+    !!taggedRow && !!taggedRow.payloads && taggedRow.payloads.tagHandle === 'tina.travels',
+    taggedRow && taggedRow.payloads ? `tagHandle=${taggedRow.payloads.tagHandle}` : 'row/payloads missing');
+  check('payloads: Instagram caption tags the poster (Posted by @handle)',
+    !!taggedRow && /Posted by @tina\.travels on Raahi NOW/.test(taggedRow.payloads.instagram));
+  check('payloads: Instagram caption stays within 2200 chars',
+    !!taggedRow && taggedRow.payloads.instagram.length <= 2200,
+    taggedRow ? `len=${taggedRow.payloads.instagram.length}` : undefined);
+  check('payloads: other platforms use the plain name, never the @handle',
+    !!taggedRow && /Posted by Tagged Tina on Raahi NOW/.test(taggedRow.payloads.facebook)
+      && !taggedRow.payloads.facebook.includes('@tina.travels')
+      && /Posted by Tagged Tina on Raahi NOW/.test(taggedRow.payloads.tiktok));
+  check('payloads: no handle → tagHandle null + plain-name attribution',
+    !!plainRow && !!plainRow.payloads && plainRow.payloads.tagHandle === null
+      && /Posted by Guest Gail on Raahi NOW/.test(plainRow.payloads.instagram));
+
+  const publicBlob = JSON.stringify([offersD2.data, buddiesD.data, eventsD.data, meAfter.data]);
+  check('public payloads never leak the internal connector account id',
+    !publicBlob.includes('17841430973767174') && !publicBlob.includes('connectorAccountId'));
 }
 
 // ---------- social poster worker (tools/social-poster.mjs) ----------
@@ -321,6 +424,13 @@ async function posterTests() {
   check('poster setup: event share queued → 201', eventShare.status === 201 && !!eventShare.data.id,
     eventShare.status !== 201 ? JSON.stringify(eventShare.data) : undefined);
 
+  const taggedOffer = await call('POST', '/api/offers', { body: { name: 'Tag Tester', marketId: 'nyc', title: 'Tagged offer for the poster test', detail: 'The poster should plan a tag for this one.', whenText: 'Monday', spots: 2, priceCredits: 0, socials: { instagram: '@tag.tester' } } });
+  check('poster setup: tagged offer post → 201', taggedOffer.status === 201 && !!taggedOffer.data.offer,
+    taggedOffer.status !== 201 ? JSON.stringify(taggedOffer.data) : undefined);
+  const taggedShare = await call('POST', '/api/share', { body: { kind: 'offer', refId: taggedOffer.data.offer && taggedOffer.data.offer.id } });
+  check('poster setup: tagged offer share queued → 201', taggedShare.status === 201 && !!taggedShare.data.id,
+    taggedShare.status !== 201 ? JSON.stringify(taggedShare.data) : undefined);
+
   const runPoster = (token) => spawnSync('node', [path.join(ROOT, 'tools', 'social-poster.mjs'), '--dry-run'], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -337,6 +447,9 @@ async function posterTests() {
     dryOut.includes(eventShare.data.id) && dryOut.includes('NO IMAGE'), dryOut.slice(0, 300));
   check('poster --dry-run never prints the internal connector account id',
     !dryOut.includes('17841430973767174'));
+  check('poster --dry-run plans the poster tag for the tagged row (@tag + photo-tag --mentions plan)',
+    dryOut.includes(taggedShare.data.id) && dryOut.includes('@tag.tester') && dryOut.includes('--mentions') && dryOut.includes('photo tag'),
+    dryOut.slice(0, 400));
 
   const stillQueued = await call('GET', '/api/outbox', { headers: { 'x-social-token': 'test-social-token' } });
   check('poster --dry-run left the outbox untouched (both rows still queued)',

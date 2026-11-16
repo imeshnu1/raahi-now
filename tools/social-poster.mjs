@@ -27,6 +27,13 @@
 //     "no image available for Instagram yet" — media is never invented.
 //   - The downloaded image lands in ~/workspace/social-queue/ (the
 //     instagram-cli requires post media to live under ~/workspace).
+//   - Tagging (distribution Tier 1): when the row's payloads carry a
+//     `tagHandle` (the poster's Instagram handle), the caption already
+//     @tags them; the poster additionally resolves the handle to an
+//     account id via `instagram-cli profile --username` and passes it
+//     as a photo tag (--mentions). Resolution is best-effort: any
+//     failure (unknown handle, CLI error, username mismatch) falls
+//     back to the caption @tag alone — a post never fails over tagging.
 //
 // Flags:
 //   --dry-run   fetch + print the planned actions only. Never calls
@@ -145,14 +152,49 @@ function extractPostUrl(stdout) {
   return m ? m[0] : null;
 }
 
-function postToInstagram(file, caption) {
-  const r = spawnSync(INSTAGRAM_CLI, [
+// Resolve a poster's Instagram handle to the account id a photo tag
+// needs, via the CLI's profile lookup. Verified before use: the
+// returned profile's username must match the handle (case-insensitive)
+// and the id must be numeric. Returns null on ANY failure — callers
+// proceed with the caption @tag only. Results are cached per run.
+// The resolved id is used only as a CLI argument; it is never printed.
+const tagCache = new Map();
+function resolveTagId(handle) {
+  if (tagCache.has(handle)) return tagCache.get(handle);
+  let id = null;
+  try {
+    const r = spawnSync(INSTAGRAM_CLI, [
+      'profile',
+      '--account-id', INSTAGRAM_ACCOUNT_ID,
+      '--username', handle,
+    ], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    if (!r.error && r.status === 0) {
+      const data = JSON.parse(r.stdout || '');
+      const prof = data && Array.isArray(data.profiles) ? data.profiles[0] : null;
+      if (prof && prof.user_id
+        && String(prof.username || '').toLowerCase() === handle.toLowerCase()
+        && /^\d+$/.test(String(prof.user_id))) {
+        id = String(prof.user_id);
+      }
+    }
+  } catch { /* lookup failed — caption @tag only */ }
+  tagCache.set(handle, id);
+  return id;
+}
+
+function postToInstagram(file, caption, tagId) {
+  const args = [
     'post-feed',
     '--account-id', INSTAGRAM_ACCOUNT_ID,
     '--file', file,
     '--caption', caption,
     '--retries', '0',
-  ], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  ];
+  // Photo tag: tag the poster in the image itself, centered. This is
+  // what lands the post on their tagged timeline, on top of the
+  // caption @tag.
+  if (tagId) args.push('--mentions', JSON.stringify([{ user_fbid: tagId, x: 0.5, y: 0.5 }]));
+  const r = spawnSync(INSTAGRAM_CLI, args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (r.error) throw new Error(`instagram-cli could not run: ${r.error.message}`);
   if (r.status !== 0) {
     const detail = (r.stderr || r.stdout || '').trim().split('\n').slice(-2).join(' ').slice(0, 200);
@@ -192,10 +234,14 @@ async function main() {
     const caption = String((row.payloads && row.payloads.instagram) || row.payload || '').slice(0, CAPTION_MAX);
     const imageUrl = (row.item && row.item.image) || row.image || null;
     const title = (row.item && row.item.title) || row.kind || 'post';
+    const tagHandle = (row.payloads && row.payloads.tagHandle) || null;
 
     if (args.dryRun) {
       console.log(`- [dry-run] ${row.id} [${row.kind || '?'}] "${title}"`);
       console.log(`    plan: ${imageUrl ? `download ${imageUrl} → ${path.join(QUEUE_DIR, `${row.id}.jpg`)}` : 'NO IMAGE — would mark failed ("no image available for Instagram yet")'}`);
+      if (tagHandle) {
+        console.log(`    plan: tag @${tagHandle} — the caption already carries the @tag; photo tag: resolve @${tagHandle} via instagram-cli profile --username, then post-feed --mentions [{"user_fbid":…,"x":0.5,"y":0.5}] if it resolves (caption @tag only if it does not)`);
+      }
       console.log(`    plan: instagram-cli post-feed --account-id <instagram> --file <image> --caption "${caption.split('\n')[0].slice(0, 80)}…"`);
       console.log('    plan: POST /api/outbox-update { status: "posted", externalUrl } on success');
       continue;
@@ -210,7 +256,14 @@ async function main() {
 
     try {
       const file = await downloadImage(imageUrl, row.id);
-      const url = postToInstagram(file, caption);
+      let tagId = null;
+      if (tagHandle) {
+        tagId = resolveTagId(tagHandle);
+        console.log(tagId
+          ? `- ${row.id} tag: @${tagHandle} resolved — photo tag will be added.`
+          : `- ${row.id} tag: @${tagHandle} could not be resolved — caption @tag only.`);
+      }
+      const url = postToInstagram(file, caption, tagId);
       await updateOutbox(base, token, row.id, { status: 'posted', ...(url ? { externalUrl: url } : {}) });
       console.log(`- ${row.id} [${row.kind || '?'}] posted to Instagram${url ? `: ${url}` : ' (no URL returned by the CLI)'}.`);
       posted++;
