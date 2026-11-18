@@ -13,8 +13,8 @@
 //    methods reset (US dollars first, small crypto set), the social
 //    engine drain endpoints (token-gated outbox), the social poster
 //    worker (tools/social-poster.mjs, dry-run + token refusal), the
-//    distribution upgrade (profile socials, per-post Instagram handles,
-//    payload attribution + tagHandle, poster tag planning), and the
+//    distribution upgrade (profile socials, per-post Instagram/X/Threads
+//    handles, payload attribution + tagHandles, poster tag planning), and the
 //    core regression set (auth gate, per-user wallet, unlock, QA B4–B9),
 //  - prints PASS/FAIL per check and exits non-zero on any failure.
 
@@ -77,9 +77,10 @@ function staticChecks() {
   let dropHandlesOk = false;
   try {
     const seed = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'seed.json'), 'utf8'));
-    dropHandlesOk = seed.drops.every((d) => 'instagram' in d && d.instagram === null);
+    dropHandlesOk = seed.drops.every((d) => 'instagram' in d && d.instagram === null
+      && 'x' in d && d.x === null && 'threads' in d && d.threads === null);
   } catch { /* stays false */ }
-  check('static: seed Drops carry the instagram field (null — no invented handles)', dropHandlesOk);
+  check('static: seed Drops carry instagram/x/threads fields (null — no invented handles)', dropHandlesOk);
 
   // --- unit: handle normalization + payload attribution ---
   const socialLib = require(path.join(ROOT, 'lib', 'social.js'));
@@ -87,16 +88,57 @@ function staticChecks() {
   const n2 = socialLib.normalizeHandle('bad handle!', 'instagram');
   const n3 = socialLib.normalizeHandle('   ', 'instagram');
   const n4 = socialLib.normalizeHandle('@chan-name_1', 'youtube');
+  const n5 = socialLib.normalizeHandle('@Good_Handle1', 'x');
+  const n6 = socialLib.normalizeHandle('@good.threads_1', 'threads');
+  const n7 = socialLib.normalizeHandle('bad.handle', 'x');
+  const n8 = socialLib.normalizeHandle('bad handle', 'threads');
   check('unit: normalizeHandle strips @, accepts dots/underscores, rejects junk, blank → null',
     n1.ok && n1.handle === 'Good.Handle_1' && !n2.ok && n3.ok && n3.handle === null && n4.ok && n4.handle === 'chan-name_1');
+  check('unit: normalizeHandle supports X (underscores, no dots) and Threads patterns',
+    n5.ok && n5.handle === 'Good_Handle1' && n6.ok && n6.handle === 'good.threads_1' && !n7.ok && !n8.ok);
   const longPayloads = socialLib.buildPayloads({ kind: 'offer', title: 'T', detail: 'x'.repeat(4000), marketId: 'nyc', posterName: 'Long Poster', instagram: 'long.poster' });
   check('unit: buildPayloads caps the Instagram caption at 2200 chars, attribution survives',
     longPayloads.instagram.length <= 2200 && longPayloads.tagHandle === 'long.poster'
       && /Posted by @long\.poster on Raahi NOW/.test(longPayloads.instagram),
     `len=${longPayloads.instagram.length}`);
   const barePayloads = socialLib.buildPayloads({ kind: 'offer', title: 'T', detail: 'D', marketId: 'nyc' });
-  check('unit: buildPayloads with no poster info → tagHandle null, no attribution line',
-    barePayloads.tagHandle === null && !/Posted by/.test(barePayloads.instagram) && !/Posted by/.test(barePayloads.facebook));
+  check('unit: buildPayloads with no poster info → tagHandle/tagHandles null, no attribution line',
+    barePayloads.tagHandle === null
+      && JSON.stringify(barePayloads.tagHandles) === JSON.stringify({ instagram: null, x: null, threads: null })
+      && !/Posted by/.test(barePayloads.instagram) && !/Posted by/.test(barePayloads.facebook)
+      && !/Posted by/.test(barePayloads.x) && !/Posted by/.test(barePayloads.threads));
+  const shortPayloads = socialLib.buildPayloads({
+    kind: 'offer',
+    title: 'A very good local morning',
+    detail: 'x'.repeat(4000),
+    marketId: 'nyc',
+    posterName: 'Long Poster',
+    instagram: 'ig.only',
+    x: 'x_handle',
+    threads: 'threads.handle',
+  });
+  check('unit: X payload is hard-capped at 280 chars, attribution + sign-off survive',
+    shortPayloads.x.length <= 280
+      && /Posted by @x_handle on Raahi NOW/.test(shortPayloads.x)
+      && /Real locals\. Real places\. — Raahi NOW/.test(shortPayloads.x),
+    `len=${shortPayloads.x.length}`);
+  check('unit: Threads payload is hard-capped at 500 chars, attribution + sign-off survive',
+    shortPayloads.threads.length <= 500
+      && /Posted by @threads\.handle on Raahi NOW/.test(shortPayloads.threads)
+      && /Real locals\. Real places\. — Raahi NOW/.test(shortPayloads.threads),
+    `len=${shortPayloads.threads.length}`);
+  check('unit: X/Threads use their OWN handles, never the Instagram handle',
+    JSON.stringify(shortPayloads.tagHandles) === JSON.stringify({ instagram: 'ig.only', x: 'x_handle', threads: 'threads.handle' })
+      && !shortPayloads.x.includes('@ig.only') && !shortPayloads.threads.includes('@ig.only')
+      && !shortPayloads.x.includes('@threads.handle') && !shortPayloads.threads.includes('@x_handle'));
+  const longTitlePayloads = socialLib.buildPayloads({
+    kind: 'offer', title: 'T'.repeat(400), detail: 'Short detail', marketId: 'nyc',
+    posterName: 'Title Tester', x: 'title_x', threads: 'title.threads',
+  });
+  check('unit: X/Threads trim an over-long title too, caps + attribution survive',
+    longTitlePayloads.x.length <= 280 && /Posted by @title_x on Raahi NOW/.test(longTitlePayloads.x)
+      && longTitlePayloads.threads.length <= 500 && /Posted by @title\.threads on Raahi NOW/.test(longTitlePayloads.threads),
+    `x=${longTitlePayloads.x.length} threads=${longTitlePayloads.threads.length}`);
 }
 
 // ---------- tiny HTTP client with cookie jar ----------
@@ -130,6 +172,10 @@ async function apiTests() {
 
   const me = await call('GET', '/api/me', { cookie: cookieB });
   check('/api/me includes externalId (null for now)', me.status === 200 && 'externalId' in me.data.user && me.data.user.externalId === null);
+  const dropsPublic = await call('GET', '/api/drops');
+  check('GET /api/drops exposes Drop instagram/x/threads fields (all null in seed)',
+    dropsPublic.status === 200 && (dropsPublic.data.drops || []).length === 6
+      && (dropsPublic.data.drops || []).every((d) => d.instagram === null && d.x === null && d.threads === null));
   check('wallet payload currencies == [USD] (US dollars only for now)',
     JSON.stringify(a.data.wallet && a.data.wallet.currencies) === JSON.stringify(['USD']),
     JSON.stringify(a.data.wallet && a.data.wallet.currencies));
@@ -214,13 +260,14 @@ async function apiTests() {
   check('GET /api/outbox with token → 200 + queued share row present',
     outOk.status === 200 && !!queuedRow && queuedRow.status === 'queued',
     outOk.status !== 200 ? JSON.stringify(outOk.data) : undefined);
-  check('queued row carries payloads for all 5 platforms',
-    !!queuedRow && ['instagram', 'tiktok', 'youtube', 'reddit', 'facebook'].every((p) => !!queuedRow.payloads && !!queuedRow.payloads[p])
-      && /Tamara/.test(queuedRow.payloads.instagram) && /Raahi NOW/.test(queuedRow.payloads.facebook),
+  check('queued row carries payloads for all 7 platforms',
+    !!queuedRow && ['instagram', 'tiktok', 'youtube', 'x', 'threads', 'reddit', 'facebook'].every((p) => !!queuedRow.payloads && !!queuedRow.payloads[p])
+      && /Tamara/.test(queuedRow.payloads.instagram) && /Raahi NOW/.test(queuedRow.payloads.facebook)
+      && queuedRow.payloads.x.length <= 280 && queuedRow.payloads.threads.length <= 500,
     queuedRow && queuedRow.payloads ? Object.keys(queuedRow.payloads).join(',') : 'no payloads');
-  check('queued row / response carries the account registry (5 platforms)',
-    (Array.isArray(outOk.data.accounts) && outOk.data.accounts.length === 5)
-      || (!!queuedRow && Array.isArray(queuedRow.accounts) && queuedRow.accounts.length === 5));
+  check('queued row / response carries the account registry (7 platforms)',
+    (Array.isArray(outOk.data.accounts) && outOk.data.accounts.length === 7)
+      || (!!queuedRow && Array.isArray(queuedRow.accounts) && queuedRow.accounts.length === 7));
 
   const updNoTok = await call('POST', '/api/outbox-update', { body: { id: share.data && share.data.id, status: 'posted' } });
   check('POST /api/outbox-update without token → 401', updNoTok.status === 401);
@@ -238,13 +285,20 @@ async function apiTests() {
     !(outAfter.data.outbox || []).some((o) => o.id === (share.data && share.data.id)));
 
   const accounts = await call('GET', '/api/social-accounts');
-  const igAccount = (accounts.data.accounts || []).find((x) => x.platform === 'instagram');
-  check('GET /api/social-accounts → 200, 5 platforms, Instagram connected (@i.travel.with.raahi), other handles null',
-    accounts.status === 200 && Array.isArray(accounts.data.accounts) && accounts.data.accounts.length === 5
+  const accountByPlatform = Object.fromEntries((accounts.data.accounts || []).map((x) => [x.platform, x]));
+  const igAccount = accountByPlatform.instagram;
+  check('GET /api/social-accounts → 200, 7 platforms, Instagram connected (@i.travel.with.raahi), other handles null',
+    accounts.status === 200 && Array.isArray(accounts.data.accounts) && accounts.data.accounts.length === 7
       && !!igAccount && igAccount.handle === 'i.travel.with.raahi' && igAccount.status === 'connected'
       && accounts.data.accounts.filter((x) => x.platform !== 'instagram').every((x) => x.handle === null)
-      && ['instagram', 'tiktok', 'youtube', 'reddit', 'facebook'].every((p) => accounts.data.accounts.some((x) => x.platform === p)),
+      && ['instagram', 'tiktok', 'youtube', 'x', 'threads', 'reddit', 'facebook'].every((p) => accounts.data.accounts.some((x) => x.platform === p)),
     accounts.status !== 200 ? JSON.stringify(accounts.data) : undefined);
+  check('GET /api/social-accounts carries the honest X / Threads / Reddit statuses',
+    !!accountByPlatform.x && accountByPlatform.x.status === 'awaiting account and connector'
+      && !!accountByPlatform.threads && accountByPlatform.threads.status === 'awaiting Raahi account'
+      && !!accountByPlatform.reddit && accountByPlatform.reddit.status === 'awaiting account and connector'
+      && accountByPlatform.threads.handle === null,
+    JSON.stringify(accounts.data.accounts));
   check('GET /api/social-accounts never exposes the internal connector account id',
     !JSON.stringify(accounts.data).includes('17841430973767174')
       && (accounts.data.accounts || []).every((x) => !('connectorAccountId' in x)));
@@ -331,27 +385,35 @@ async function apiTests() {
   // --- distribution: profile socials, post handles, payload tagging ---
   const socAnon = await call('POST', '/api/me-socials', { body: { instagram: 'someone' } });
   check('me-socials logged-out → 401', socAnon.status === 401);
-  const socSave = await call('POST', '/api/me-socials', { cookie: cookieA, body: { instagram: '@Hannah.Hosts', tiktok: 'hannahhosts' } });
+  const socSave = await call('POST', '/api/me-socials', { cookie: cookieA, body: { instagram: '@Hannah.Hosts', tiktok: 'hannahhosts', x: '@HannahHostsX', threads: '@hannah.threads' } });
   check('me-socials save → 200, @ stripped, per-platform handles stored',
     socSave.status === 200 && socSave.data.socials.instagram === 'Hannah.Hosts'
-      && socSave.data.socials.tiktok === 'hannahhosts' && socSave.data.socials.youtube === null,
+      && socSave.data.socials.tiktok === 'hannahhosts' && socSave.data.socials.youtube === null
+      && socSave.data.socials.x === 'HannahHostsX' && socSave.data.socials.threads === 'hannah.threads',
     socSave.status !== 200 ? JSON.stringify(socSave.data) : undefined);
   const meAfter = await call('GET', '/api/me', { cookie: cookieA });
   check('GET /api/me returns the saved socials',
-    !!meAfter.data.user && meAfter.data.user.socials.instagram === 'Hannah.Hosts' && meAfter.data.user.socials.tiktok === 'hannahhosts');
+    !!meAfter.data.user && meAfter.data.user.socials.instagram === 'Hannah.Hosts' && meAfter.data.user.socials.tiktok === 'hannahhosts'
+      && meAfter.data.user.socials.x === 'HannahHostsX' && meAfter.data.user.socials.threads === 'hannah.threads');
   const socBad = await call('POST', '/api/me-socials', { cookie: cookieA, body: { instagram: 'not a handle!' } });
   check('me-socials with an impossible handle → 400', socBad.status === 400);
+  const socBadX = await call('POST', '/api/me-socials', { cookie: cookieA, body: { x: 'bad.handle' } });
+  check('me-socials with an impossible X handle (dots not allowed) → 400', socBadX.status === 400);
+  const socBadThreads = await call('POST', '/api/me-socials', { cookie: cookieA, body: { threads: 'bad handle' } });
+  check('me-socials with an impossible Threads handle → 400', socBadThreads.status === 400);
   const socClear = await call('POST', '/api/me-socials', { cookie: cookieA, body: { tiktok: '' } });
   check('me-socials blank clears that handle, the others stay',
-    socClear.status === 200 && socClear.data.socials.tiktok === null && socClear.data.socials.instagram === 'Hannah.Hosts');
+    socClear.status === 200 && socClear.data.socials.tiktok === null && socClear.data.socials.instagram === 'Hannah.Hosts'
+      && socClear.data.socials.x === 'HannahHostsX' && socClear.data.socials.threads === 'hannah.threads');
 
   const defaultOffer = await call('POST', '/api/offers', { cookie: cookieA, body: { marketId: 'boston', title: 'Profile-handle offer', detail: 'No handle typed on the form.', whenText: 'Friday', spots: 2, priceCredits: 0 } });
   check('offer by logged-in user without a typed handle → 201', defaultOffer.status === 201,
     defaultOffer.status !== 201 ? JSON.stringify(defaultOffer.data) : undefined);
   const offersD1 = await call('GET', '/api/offers');
   const defaultOfferView = (offersD1.data.offers || []).find((o) => o.id === (defaultOffer.data.offer && defaultOffer.data.offer.id));
-  check('offer defaults to the profile Instagram handle',
-    !!defaultOfferView && !!defaultOfferView.socials && defaultOfferView.socials.instagram === 'Hannah.Hosts',
+  check('offer defaults to the profile Instagram/X/Threads handles',
+    !!defaultOfferView && !!defaultOfferView.socials && defaultOfferView.socials.instagram === 'Hannah.Hosts'
+      && defaultOfferView.socials.x === 'HannahHostsX' && defaultOfferView.socials.threads === 'hannah.threads',
     defaultOfferView ? JSON.stringify(defaultOfferView.socials) : 'offer missing');
 
   const explicitBuddy = await call('POST', '/api/buddies', { cookie: cookieA, body: { marketId: 'boston', title: 'Explicit handle buddy', detail: 'Typed a different handle on this post.', whenText: 'Saturday', party: 2, socials: { instagram: '@other.handle' } } });
@@ -361,16 +423,22 @@ async function apiTests() {
     explicitBuddy.status === 201 && !!explicitBuddyView && !!explicitBuddyView.socials && explicitBuddyView.socials.instagram === 'other.handle',
     explicitBuddy.status !== 201 ? JSON.stringify(explicitBuddy.data) : undefined);
 
-  const guestTagged = await call('POST', '/api/offers', { body: { name: 'Tagged Tina', marketId: 'nyc', title: 'Tagged guest offer', detail: 'A guest typed her handle.', whenText: 'Sunday', spots: 2, priceCredits: 0, socials: { instagram: '@tina.travels' } } });
+  const guestTagged = await call('POST', '/api/offers', { body: { name: 'Tagged Tina', marketId: 'nyc', title: 'Tagged guest offer', detail: 'A guest typed her handles.', whenText: 'Sunday', spots: 2, priceCredits: 0, socials: { instagram: '@tina.travels', x: '@tina_x', threads: '@tina.threads' } } });
   check('guest offer with an @handle → 201', guestTagged.status === 201,
     guestTagged.status !== 201 ? JSON.stringify(guestTagged.data) : undefined);
   const guestTaggedId = guestTagged.data.offer && guestTagged.data.offer.id;
   const offersD2 = await call('GET', '/api/offers');
   const guestTaggedView = (offersD2.data.offers || []).find((o) => o.id === guestTaggedId);
-  check('GET /api/offers includes the stored instagram handle (no @)',
-    !!guestTaggedView && !!guestTaggedView.socials && guestTaggedView.socials.instagram === 'tina.travels');
+  check('GET /api/offers includes the stored instagram/x/threads handles (no @)',
+    !!guestTaggedView && !!guestTaggedView.socials && guestTaggedView.socials.instagram === 'tina.travels'
+      && guestTaggedView.socials.x === 'tina_x' && guestTaggedView.socials.threads === 'tina.threads',
+    guestTaggedView ? JSON.stringify(guestTaggedView.socials) : 'offer missing');
   const guestBadHandle = await call('POST', '/api/offers', { body: { name: 'Bad Handle', marketId: 'nyc', title: 'T', detail: 'D', spots: 1, priceCredits: 0, socials: { instagram: 'no spaces allowed!' } } });
   check('post with an impossible instagram handle → 400', guestBadHandle.status === 400);
+  const guestBadX = await call('POST', '/api/offers', { body: { name: 'Bad X', marketId: 'nyc', title: 'T', detail: 'D', spots: 1, priceCredits: 0, socials: { x: 'bad.handle' } } });
+  check('post with an impossible X handle → 400', guestBadX.status === 400);
+  const guestBadThreads = await call('POST', '/api/offers', { body: { name: 'Bad Threads', marketId: 'nyc', title: 'T', detail: 'D', spots: 1, priceCredits: 0, socials: { threads: 'bad handle' } } });
+  check('post with an impossible Threads handle → 400', guestBadThreads.status === 400);
 
   const guestEventTagged = await call('POST', '/api/events', { body: { hostName: 'Jam Maker Jo', marketId: 'ellsworth', name: "Jo's Jam Social", detail: 'Jam and stories.', dateText: 'Sat Nov 21, 3 pm', placeText: 'Ellsworth', socials: { instagram: 'jo.makes.jam' } } });
   const eventsD = await call('GET', '/api/events');
@@ -388,6 +456,15 @@ async function apiTests() {
   check('payloads: tagHandle comes from the post handle',
     !!taggedRow && !!taggedRow.payloads && taggedRow.payloads.tagHandle === 'tina.travels',
     taggedRow && taggedRow.payloads ? `tagHandle=${taggedRow.payloads.tagHandle}` : 'row/payloads missing');
+  check('payloads: tagHandles carries each platform handle from the post',
+    !!taggedRow && !!taggedRow.payloads
+      && JSON.stringify(taggedRow.payloads.tagHandles) === JSON.stringify({ instagram: 'tina.travels', x: 'tina_x', threads: 'tina.threads' }),
+    taggedRow && taggedRow.payloads ? JSON.stringify(taggedRow.payloads.tagHandles) : 'row/payloads missing');
+  check('payloads: X/Threads drain copy tags with their own handles only',
+    !!taggedRow && /Posted by @tina_x on Raahi NOW/.test(taggedRow.payloads.x)
+      && /Posted by @tina\.threads on Raahi NOW/.test(taggedRow.payloads.threads)
+      && !taggedRow.payloads.x.includes('@tina.travels') && !taggedRow.payloads.threads.includes('@tina.travels')
+      && taggedRow.payloads.x.length <= 280 && taggedRow.payloads.threads.length <= 500);
   check('payloads: Instagram caption tags the poster (Posted by @handle)',
     !!taggedRow && /Posted by @tina\.travels on Raahi NOW/.test(taggedRow.payloads.instagram));
   check('payloads: Instagram caption stays within 2200 chars',
@@ -397,9 +474,12 @@ async function apiTests() {
     !!taggedRow && /Posted by Tagged Tina on Raahi NOW/.test(taggedRow.payloads.facebook)
       && !taggedRow.payloads.facebook.includes('@tina.travels')
       && /Posted by Tagged Tina on Raahi NOW/.test(taggedRow.payloads.tiktok));
-  check('payloads: no handle → tagHandle null + plain-name attribution',
+  check('payloads: no handle → tagHandle/tagHandles null + plain-name attribution',
     !!plainRow && !!plainRow.payloads && plainRow.payloads.tagHandle === null
-      && /Posted by Guest Gail on Raahi NOW/.test(plainRow.payloads.instagram));
+      && JSON.stringify(plainRow.payloads.tagHandles) === JSON.stringify({ instagram: null, x: null, threads: null })
+      && /Posted by Guest Gail on Raahi NOW/.test(plainRow.payloads.instagram)
+      && /Posted by Guest Gail on Raahi NOW/.test(plainRow.payloads.x)
+      && /Posted by Guest Gail on Raahi NOW/.test(plainRow.payloads.threads));
 
   const publicBlob = JSON.stringify([offersD2.data, buddiesD.data, eventsD.data, meAfter.data]);
   check('public payloads never leak the internal connector account id',
@@ -467,6 +547,72 @@ async function posterTests() {
   check('poster with missing token → non-zero exit + clear message',
     missing.status !== 0 && missingOut.includes('SOCIAL_ENGINE_TOKEN is missing'),
     `exit=${missing.status} out=${missingOut.slice(0, 200)}`);
+
+  // X / Threads rows: the poster must hold them in BOTH modes, with a
+  // clear reason, and must not call outbox-update for them. A tiny
+  // fake drain server (separate process) serves only those two rows.
+  const fakePort = 3401;
+  const fakeBase = `http://localhost:${fakePort}`;
+  const fakeScript = `
+    const http = require('http');
+    const rows = [
+      { id: 'out-x-held', kind: 'offer', platform: 'x', payloads: { x: 'held x post' }, item: { title: 'Held X' } },
+      { id: 'out-threads-held', kind: 'offer', platform: 'threads', payloads: { threads: 'held threads post' }, item: { title: 'Held Threads' } },
+    ];
+    http.createServer((req, res) => {
+      if (req.headers['x-social-token'] !== 'fake-token') { res.writeHead(401); res.end('{}'); return; }
+      if (req.method === 'GET' && req.url === '/api/outbox') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ outbox: rows }));
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/api/outbox-update') {
+        console.log('UPDATE_CALLED');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+        return;
+      }
+      res.writeHead(404); res.end('{}');
+    }).listen(${fakePort});
+  `;
+  const fakeServer = spawn('node', ['-e', fakeScript], { stdio: 'pipe' });
+  let fakeLog = '';
+  fakeServer.stdout.on('data', (d) => { fakeLog += d; });
+  fakeServer.stderr.on('data', (d) => { fakeLog += d; });
+  try {
+    let fakeReady = false;
+    for (let i = 0; i < 40 && !fakeReady; i++) {
+      try {
+        const r = await fetch(`${fakeBase}/api/outbox`, { headers: { 'x-social-token': 'fake-token' } });
+        fakeReady = r.ok;
+      } catch { /* not up yet */ }
+      if (!fakeReady) await new Promise((r) => setTimeout(r, 100));
+    }
+    const runHeld = (extraArgs) => spawnSync('node', [path.join(ROOT, 'tools', 'social-poster.mjs'), ...extraArgs], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, SOCIAL_ENGINE_TOKEN: 'fake-token', NOW_BASE_URL: fakeBase },
+    });
+    const heldDry = runHeld(['--dry-run']);
+    const heldDryOut = `${heldDry.stdout || ''}\n${heldDry.stderr || ''}`;
+    check('poster holds X + Threads rows in dry-run with clear reasons',
+      fakeReady && heldDry.status === 0
+        && heldDryOut.includes('no Raahi X connector configured yet')
+        && heldDryOut.includes('no Raahi Threads account configured yet')
+        && heldDryOut.includes('left queued'),
+      heldDryOut.slice(0, 400));
+    const heldReal = runHeld([]);
+    const heldRealOut = `${heldReal.stdout || ''}\n${heldReal.stderr || ''}`;
+    check('poster holds X + Threads rows in real mode too (no update, no post)',
+      heldReal.status === 0
+        && heldRealOut.includes('no Raahi X connector configured yet')
+        && heldRealOut.includes('no Raahi Threads account configured yet')
+        && heldRealOut.includes('left queued=2')
+        && !fakeLog.includes('UPDATE_CALLED'),
+      heldRealOut.slice(0, 400));
+  } finally {
+    fakeServer.kill('SIGTERM');
+  }
 }
 
 async function main() {

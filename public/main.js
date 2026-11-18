@@ -189,6 +189,8 @@ function renderSocials() {
   set('#socialInstagram', s.instagram);
   set('#socialTiktok', s.tiktok);
   set('#socialYoutube', s.youtube);
+  set('#socialX', s.x);
+  set('#socialThreads', s.threads);
 }
 
 async function connectWallet() {
@@ -565,25 +567,65 @@ async function loadEvents() {
 
 // ---------- v2: Share kit ----------
 function findShareItem(kind, ref) {
-  if (kind === 'drop') { const d = state.drops.find((x) => x.id === ref); return d ? { title: d.title, detail: d.whyNow, when: countdown(d.expiresAt), marketId: d.marketId, posterName: d.local ? d.local.name : '', instagram: d.instagram || null } : null; }
-  if (kind === 'offer') { const o = state.offers.find((x) => x.id === ref); return o ? { title: o.title, detail: o.detail, when: o.whenText, marketId: o.marketId, posterName: o.posterName || '', instagram: o.socials ? o.socials.instagram : null } : null; }
-  if (kind === 'buddy') { const b = state.buddies.find((x) => x.id === ref); return b ? { title: b.title, detail: b.detail, when: b.whenText, marketId: b.marketId, posterName: b.posterName || '', instagram: b.socials ? b.socials.instagram : null } : null; }
-  if (kind === 'event') { const e = state.events.find((x) => x.id === ref); return e ? { title: e.name, detail: e.detail, when: e.dateText, marketId: e.marketId, posterName: e.posterName || '', instagram: e.socials ? e.socials.instagram : null } : null; }
+  if (kind === 'drop') { const d = state.drops.find((x) => x.id === ref); return d ? { title: d.title, detail: d.whyNow, when: countdown(d.expiresAt), marketId: d.marketId, posterName: d.local ? d.local.name : '', instagram: d.instagram || null, x: d.x || null, threads: d.threads || null, socials: { instagram: d.instagram || null, x: d.x || null, threads: d.threads || null } } : null; }
+  if (kind === 'offer') { const o = state.offers.find((x) => x.id === ref); return o ? { title: o.title, detail: o.detail, when: o.whenText, marketId: o.marketId, posterName: o.posterName || '', instagram: o.socials ? o.socials.instagram : null, x: o.socials ? o.socials.x : null, threads: o.socials ? o.socials.threads : null, socials: o.socials || null } : null; }
+  if (kind === 'buddy') { const b = state.buddies.find((x) => x.id === ref); return b ? { title: b.title, detail: b.detail, when: b.whenText, marketId: b.marketId, posterName: b.posterName || '', instagram: b.socials ? b.socials.instagram : null, x: b.socials ? b.socials.x : null, threads: b.socials ? b.socials.threads : null, socials: b.socials || null } : null; }
+  if (kind === 'event') { const e = state.events.find((x) => x.id === ref); return e ? { title: e.name, detail: e.detail, when: e.dateText, marketId: e.marketId, posterName: e.posterName || '', instagram: e.socials ? e.socials.instagram : null, x: e.socials ? e.socials.x : null, threads: e.socials ? e.socials.threads : null, socials: e.socials || null } : null; }
   return null;
+}
+
+function trimShortText(text, max) {
+  const s = String(text || '');
+  if (max <= 0) return '';
+  if (s.length <= max) return s;
+  if (max === 1) return '…';
+  return `${s.slice(0, max - 1).trimEnd()}…`;
+}
+
+function shortAttributionText(handle, name, limit, signoff) {
+  if (!handle && !name) return '';
+  const fixed = 'Posted by '.length + ' on Raahi NOW'.length;
+  const maxSubject = Math.max(0, limit - signoff.length - 3 - fixed);
+  const subject = handle ? `@${handle}` : trimShortText(name, maxSubject);
+  return subject ? `Posted by ${subject} on Raahi NOW` : '';
+}
+
+function composeShortPost(limit, item, where, attribution, signoff) {
+  const suffix = [attribution, signoff].filter(Boolean).join('\n');
+  const suffixBlock = suffix ? `\n\n${suffix}` : '';
+  let titleText = String(item.title || '').trim();
+  let wherePart = where ? ` — ${where}` : '';
+  let header = `${titleText}${wherePart}`;
+  if (header.length + suffixBlock.length > limit) {
+    const maxTitle = limit - suffixBlock.length - wherePart.length;
+    if (maxTitle >= 1) {
+      titleText = trimShortText(titleText, maxTitle);
+    } else {
+      wherePart = '';
+      titleText = trimShortText(titleText, limit - suffixBlock.length);
+    }
+    header = `${titleText}${wherePart}`;
+  }
+  const detailText = String(item.detail || '').trim().replace(/\s+/g, ' ');
+  const detailRoom = limit - header.length - suffixBlock.length - 2;
+  const detailBlock = detailText && detailRoom >= 12 ? `\n\n${trimShortText(detailText, detailRoom)}` : '';
+  return `${header}${detailBlock}${suffixBlock}`;
 }
 
 function shareCopies(kind, item) {
   const where = marketName(item.marketId);
   const signoff = 'Real locals. Real places. — Raahi NOW · now.raahi.io';
-  // Attribution mirrors lib/social.js buildPayloads: the Instagram
-  // caption @tags the poster when we have their handle; everywhere
-  // else it's their plain name.
+  // Attribution mirrors lib/social.js buildPayloads: each platform
+  // @tags the poster only with that platform's own handle; platforms
+  // without their own collected handle use their plain name.
   const name = item.posterName || '';
   const igAttr = item.instagram ? `Posted by @${item.instagram} on Raahi NOW` : (name ? `Posted by ${name} on Raahi NOW` : '');
   const nameAttr = name ? `Posted by ${name} on Raahi NOW` : '';
   return {
     instagram: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}${igAttr ? '\n' + igAttr : ''}\n\n${signoff}\n#RaahiNOW #LocalTravel`,
     tiktok: `${item.title} — ${where}${nameAttr ? ' · ' + nameAttr : ''} · ${signoff}`,
+    x: composeShortPost(280, item, where, shortAttributionText(item.x, name, 280, signoff), signoff),
+    threads: composeShortPost(500, item, where, shortAttributionText(item.threads, name, 500, signoff), signoff),
     redditTitle: `${item.title} (${where})`,
     redditBody: `${item.detail || ''}\n\n${item.when ? 'When: ' + item.when + '\n\n' : ''}${name ? `Posted by ${name} on Raahi NOW, where locals post things like this themselves.` : 'Sharing this from Raahi NOW, where locals post things like this themselves.'} ${signoff}`,
     facebook: `${item.title}\n${item.detail || ''}\n${item.when ? item.when + ' · ' : ''}${where}${nameAttr ? '\n' + nameAttr : ''}\n\n${signoff}`,
@@ -649,6 +691,8 @@ function openShare(kind, ref) {
     <form>
       ${block('Instagram caption', copies.instagram, 'copyIg')}
       ${block('TikTok / YouTube Shorts title', copies.tiktok, 'copyTt')}
+      ${block('X post', copies.x, 'copyX')}
+      ${block('Threads post', copies.threads, 'copyThreads')}
       ${block('Reddit title', copies.redditTitle, 'copyRt')}
       ${block('Reddit body', copies.redditBody, 'copyRb')}
       ${block('Facebook post', copies.facebook, 'copyFb')}
@@ -788,7 +832,9 @@ $('#socialsForm').addEventListener('submit', async (e) => {
       const r = await api('/api/me-socials', { method: 'POST', body: JSON.stringify({
         instagram: $('#socialInstagram').value,
         tiktok: $('#socialTiktok').value,
-        youtube: $('#socialYoutube').value }) });
+        youtube: $('#socialYoutube').value,
+        x: $('#socialX').value,
+        threads: $('#socialThreads').value }) });
       state.user = r.user;
       renderSocials();
       msg.textContent = 'Saved. We\'ll tag you when your posts go out.';

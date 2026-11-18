@@ -60,8 +60,8 @@ bug).
 ## 3. Social distribution — the outbox and the social engine
 
 - Every Drop, Offer, Event, and Buddy post has a Share kit in the UI:
-  per-platform copy (Instagram, TikTok / YouTube Shorts, Reddit,
-  Facebook), Web Share, and a downloadable 1080×1080 PNG card.
+  per-platform copy (Instagram, TikTok / YouTube Shorts, X, Threads,
+  Reddit, Facebook), Web Share, and a downloadable 1080×1080 PNG card.
 - "Queue for auto-posting" writes to the **`outbox`** table via
   `POST /api/share`: `{ kind, refId, platform: 'all', payload, status:
   'queued', userId }`. The payload is the ready-to-post text built
@@ -96,23 +96,38 @@ to exactly one of `posted` (with `external_url` + `posted_at`) or
 `GET /api/outbox`.
 
 **Account registry:** `lib/social.js → ACCOUNTS` — instagram, tiktok,
-youtube, reddit, facebook, each with its post formats. **Instagram is
-connected: @i.travel.with.raahi** (verified live via the Instagram
-connector, 2026-11-15; the registry also carries its internal
-connector account id for the posting engine — never user-facing). The
-other four platforms are still `handle: null`, status
-`awaiting accounts from Imesh`, until those accounts are handed over.
+youtube, x, threads, reddit, facebook (7 platforms), each with its
+post formats. **Instagram is connected: @i.travel.with.raahi**
+(verified live via the Instagram connector, 2026-11-15; the registry
+also carries its internal connector account id for the posting
+engine — never user-facing). The other six platforms are still
+`handle: null`:
+
+- TikTok and YouTube: `awaiting accounts from Imesh`.
+- X: `awaiting account and connector` — a Raahi X account plus an
+  X API or aggregator posting route are both still needed.
+- Threads: `awaiting Raahi account` — a Threads connector exists, but
+  it is linked only to Imesh's personal Threads account, which is not
+  a Raahi account. A Raahi Threads account must be created and linked
+  before Threads can be marked connected.
+- Reddit: `awaiting account and connector` — Reddit is still in the
+  system; nothing was removed. It still needs a Raahi account and a
+  posting route.
+- Facebook: `awaiting accounts from Imesh`.
 
 **Poster worker (v1, in this repo):** `tools/social-poster.mjs`
 (`npm run poster -- --dry-run` to preview) drains the queue over this
 same API and posts to Instagram via the instagram-cli connector:
-one platform per row (rows queued as `all` go to Instagram; rows for
-other platforms are left queued), the item's image is downloaded to
-`~/workspace/social-queue/`, and a row with no image is marked
-`failed` with the note "no image available for Instagram yet". It
-reads `SOCIAL_ENGINE_TOKEN` and `NOW_BASE_URL` from the environment
-or the repo's `.env.local`. The Mac-mini social-pilot can replace or
-complement it later without any API change.
+one platform per row (rows queued as `all` go to Instagram in v1;
+rows for other platforms are left queued), the item's image is
+downloaded to `~/workspace/social-queue/`, and a row with no image is
+marked `failed` with the note "no image available for Instagram yet".
+X and Threads payloads are generated, but their rows are explicitly
+held — never posted to a personal account — until their Raahi
+accounts/connectors exist. It reads `SOCIAL_ENGINE_TOKEN` and
+`NOW_BASE_URL` from the environment or the repo's `.env.local`. The
+Mac-mini social-pilot can replace or complement it later without any
+API change.
 
 **Remaining steps to switch the drain on:**
 
@@ -169,31 +184,38 @@ into the central engine unchanged.
 
 The point of NOW's social distribution: a vendor, local, or traveler
 posts **once**, on Raahi, and the post travels for them. Nobody should
-have to re-post the same thing on five platforms by hand.
+have to re-post the same thing platform after platform by hand.
 
 ### Tier 1 — Raahi posts it, with the poster tagged (LIVE)
 
-- Every Offer, Buddy post, and Event can carry the poster's Instagram
-  handle: an optional field on the posting forms ("Your Instagram @ —
-  we'll tag you when this goes out"), or the handle saved on their
-  profile (below). Handles are normalized on the way in (leading `@`
-  stripped, simple handle pattern validated) and stored without `@`:
-  `socials: { instagram }` JSON on `offers` / `buddy_posts` / `events`
-  (Neon TEXT column, file-store object). Drops carry an optional
-  `instagram` field in the seed shape for the same purpose (all null
-  today — no invented handles for the seeded locals).
+- Every Offer, Buddy post, and Event can carry the poster's
+  per-platform handles. The posting forms ask for Instagram only in
+  v1 ("Your Instagram @ — we'll tag you when this goes out"); X and
+  Threads handles come from an explicit API-supplied post handle or,
+  more commonly, the poster's saved profile handles (below). Handles
+  are normalized on the way in (leading `@` stripped, per-platform
+  handle pattern validated) and stored without `@`:
+  `socials: { instagram, x, threads }` JSON on `offers` /
+  `buddy_posts` / `events` (Neon TEXT column, file-store object).
+  Drops carry optional `instagram`, `x`, and `threads` fields in the
+  seed shape for the same purpose (all null today — no invented
+  handles for the seeded locals).
 - A logged-in member saves their handles once — `POST
   /api/me-socials` (rides `api/auth.js` via a `vercel.json` rewrite;
-  body `{ instagram?, tiktok?, youtube? }`, stored as `users.socials`
-  JSON, returned on `/api/me`). When they post without typing a
-  handle, the post defaults to the profile's Instagram handle; an
-  explicit handle on the post always wins.
+  body `{ instagram?, tiktok?, youtube?, x?, threads? }`, stored as
+  `users.socials` JSON, returned on `/api/me`). When they post without
+  supplying a handle for a platform, that platform defaults to the
+  profile handle; an explicit handle on the post always wins.
 - When a post is queued and drained, `lib/social.js → buildPayloads`
-  attributes it: the Instagram caption gains **"Posted by @handle on
-  Raahi NOW"** and the payload carries `tagHandle`. Other platforms
-  get the plain version — **"Posted by \<name\> on Raahi NOW"** — an
-  @handle is only ever used on the platform it belongs to (v1 collects
-  Instagram handles only).
+  attributes it on each platform with that platform's own handle:
+  Instagram, X, and Threads each gain **"Posted by @handle on Raahi
+  NOW"** when their own handle is present. The payload carries legacy
+  `tagHandle` for Instagram plus `tagHandles: { instagram, x,
+  threads }`. Other platforms get the plain version — **"Posted by
+  \<name\> on Raahi NOW"** — and a poster's Instagram handle is never
+  reused as their X or Threads handle. X posts are hard-capped at 280
+  characters and Threads posts at 500, with detail/title trimmed so
+  attribution and the sign-off survive.
 - The poster worker (`tools/social-poster.mjs`) adds the **photo
   tag** on top of the caption tag: it resolves the handle with
   `instagram-cli profile --username <handle>` (returned username must
@@ -218,8 +240,9 @@ account linking + per-platform posting permissions) — you cannot post
 as someone without their grant, and there is no honest shortcut.
 
 - **Data model is ready:** `users.socials` (profile handles),
-  per-post `socials` (the handle a specific post carries), and the
-  outbox/payload pipeline (`tagHandle` + per-platform copy) all exist.
+  per-post `socials` (the per-platform handles a specific post
+  carries), and the outbox/payload pipeline (`tagHandle`,
+  `tagHandles`, and per-platform copy) all exist.
   A connection adds one thing: a per-user, per-platform connection
   record (provider, external account id, token reference, scopes,
   status) next to `users.socials`.
